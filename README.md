@@ -1,195 +1,142 @@
-# IdentityHub - NHI Management Platform (PoC)
+# IdentityHub — NHI Management Platform (PoC)
 
-IdentityHub is a Non-Human Identity (NHI) management platform. Organizations use our product to track and manage their service accounts, API keys, service principals, and other machine identities across cloud environments. This proof-of-concept enables organizations to rapidly create Jira tickets when identity-related issues (e.g., stale service accounts, overprivileged keys) are discovered.
+IdentityHub is a Non-Human Identity (NHI) management platform. Organizations use it to track and manage service accounts, API keys, service principals, and other machine identities across cloud environments. This proof-of-concept lets organizations rapidly create Jira tickets when identity-related issues are discovered — e.g., stale service accounts or overprivileged keys.
+
+---
+
+## Contents
+
+- [Quick Start](#-quick-start)
+- [Architecture & Tech Stack](#-architecture--tech-stack)
+- [Design Decisions & Assumptions](#-design-decisions--assumptions)
+- [Detailed Setup](#-detailed-setup)
+- [REST API Usage](#-rest-api-usage)
+- [Bonus: NHI Blog Digest Worker](#-bonus-nhi-blog-digest-worker)
+- [Known Limitations](#-known-limitations)
+
+---
+
+## 🚀 Quick Start
+
+**Prerequisites:**
+- [.NET 9 SDK](https://dotnet.microsoft.com/download)
+- [Node.js](https://nodejs.org/)
+- An [Atlassian OAuth 2.0 (3LO) app](https://developer.atlassian.com/cloud/jira/platform/oauth-2-3lo-apps/)
+- PowerShell, to run the seed script. Windows has this built in; on macOS/Linux install [PowerShell (pwsh)](https://learn.microsoft.com/en-us/powershell/scripting/install/installing-powershell) first.
+
+**Steps:**
+
+1. Clone the repo.
+2. Configure backend secrets ([details](#1-configure-backend-secrets)).
+3. Seed the database: from `IdentityHub/src/JiraIntegration.Server`, run `./reset-demo.ps1` ([details](#2-seed-the-database)). Requires the EF Core CLI: `dotnet tool install --global dotnet-ef`.
+4. Start the API: `dotnet run` (from `IdentityHub/src/JiraIntegration.Server`) → `localhost:5282`.
+5. Start the Angular portal: `npm install && npm start` (from `IdentityHub/src/JiraIntegration.Client`) → `localhost:4200`.
+6. Log in with a seeded demo account — see [credentials](#2-seed-the-database).
+7. Connect your Jira workspace, select a project, and create a ticket from the dashboard.
+8. Generate an API key for the project in the UI, then call `POST /api/v1/nhi-findings` to test programmatic ticket creation ([details](#-rest-api-usage)).
+
+---
 
 ## 🏗️ Architecture & Tech Stack
 
-To ensure a clear separation between UI and backend layers, the application is divided into three functionally named boundaries:
+The application is divided into three functional boundaries, with a strict separation between UI and backend layers:
 
-1. **`JiraIntegration.Client` (Frontend UI):** Built with Angular. Acts as a lightweight client responsible only for presentation and user experience.
-2. **`JiraIntegration.Server` (Backend API):** Built with C# .NET Core. Handles all core business logic, secure session management, multi-tenancy enforcement, and third-party API orchestration.
-3. **`BlogScanner.Worker` (Bonus Automation):** Built with Python. An external scheduled task that polls for the most recent blog post, generates an AI-powered summary, and pushes the payload to the API via REST.
+1. **`JiraIntegration.Client` (Frontend UI)** — Angular. A lightweight client responsible only for presentation and state management.
+2. **`JiraIntegration.Server` (Backend API)** — C# .NET Core 9. Handles core business logic, secure session management, multi-tenancy enforcement, and Atlassian API orchestration.
+3. **`BlogScanner.Worker` (Bonus Automation)** — Python. An external scheduled task that polls the Oasis blog, generates an AI-powered summary, and pushes the payload to the API via REST.
+
+---
 
 ## 🧠 Design Decisions & Assumptions
 
-### 1. Database Selection: SQLite over PostgreSQL
-**Decision:** The backend utilizes a local **SQLite** database via Entity Framework (EF) Core.
-**Reasoning:** The primary technical requirement mandated that the solution be runnable in the easiest, most frictionless way possible. SQLite requires zero external dependencies, no Docker daemon, and no container configuration to run locally. Because the data access layer is abstracted behind EF Core, migrating to PostgreSQL in a production environment simply requires swapping the database provider.
+### 1. Database: SQLite over PostgreSQL
+The backend uses a local **SQLite** database via EF Core. SQLite requires zero external dependencies or Docker configuration for the reviewer. Because the data access layer is abstracted behind EF Core, swapping to PostgreSQL for production is a provider change, not a rewrite.
 
-### 2. Jira Integration & Atlassian OAuth 2.0 (3LO)
-**Decision:** The application implements the complete Atlassian OAuth 2.0 App-to-App authorization flow rather than relying on basic API tokens.
-**Reasoning:** To properly handle multi-tenancy, users must be able to securely connect their own isolated Jira workspaces.
-* The backend generates a cryptographically secure `state` parameter to prevent CSRF attacks during the redirect.
-* Upon callback, the API exchanges the authorization code for an `access_token` and `refresh_token`.
-* The API dynamically queries Atlassian's `accessible-resources` endpoint to discover the user's specific `CloudId` required for API routing.
+### 2. Jira Integration: Atlassian OAuth 2.0 (3LO)
+The app implements the full Atlassian OAuth 2.0 App-to-App authorization flow so each user connects their own isolated Jira workspace:
+- A cryptographically secure `state` parameter prevents CSRF during the redirect.
+- The API queries Atlassian's `accessible-resources` endpoint to discover the user's `CloudId` for API routing.
 
-### 3. Security Practices: Credential Management
-**Decision:** Sensitive configuration (JWT signing keys, Atlassian OAuth app credentials) is never committed to source control. In local development, [.NET User Secrets](https://learn.microsoft.com/en-us/aspnet/core/security/app-secrets) store these values outside the project directory.
-**Reasoning:** As an NHI security tool, the platform must practice defense-in-depth and follow secure coding standards. All sensitive third-party credentials (Access Tokens, Refresh Tokens) are encrypted at the application layer before being persisted to the database. *(Note: In a production environment, application secrets would be supplied via environment variables or a managed service like AWS Secrets Manager or Azure Key Vault.)*
+### 3. Credential Management
+Sensitive configuration (JWT signing keys, Atlassian OAuth credentials) is kept out of source control via `.NET User Secrets` locally; in production this would move to a managed secret store (e.g., Azure Key Vault). All Atlassian access/refresh tokens are encrypted at the application layer (`TokenEncryptionService`, via ASP.NET Data Protection) before being persisted to SQLite.
 
-### 4. Scope & Feature Assumptions
-* **Issue Types:** The Jira integration defaults to creating standard `Task` issue types to ensure maximum compatibility across different users' custom Jira configurations.
-* **Authentication:** A lightweight, local salted/hashed authentication system is implemented to demonstrate secure session management without requiring the configuration of a third-party IdP just to run the application.
+### 4. Scope Assumptions
+- **Issue types:** ticket creation defaults to standard `Task` issues, for maximum compatibility across customized Jira tenants.
+- **Authentication:** a local salted/hashed auth system demonstrates secure session management without requiring the reviewer to stand up a third-party IdP. The UI relies on seeded demo users rather than self-service registration, to keep scope at MVP.
+- **Jira workspaces:** each user may connect at most one Jira workspace — enough to demonstrate the OAuth flow and ticket-creation path without multi-tenant UI routing overhead.
 
-### 5. User Registration: Login Only
-**Decision:** The UI provides login but no self-service registration flow.
-**Reasoning:** A Register button and sign-up flow were considered, but they fall outside the scope of the assignment and were not required for the PoC. Building registration would add time without advancing the core Jira integration goals.
+### 5. Ticket History: Local Ledger over Jira JQL
+Tickets created through the app are persisted in a local ledger and listed from there, instead of querying Jira via JQL on every page load.
+- **Performance & resilience:** no Atlassian network round-trip on page load; the dashboard stays usable even if the Jira API is degraded.
+- **Scope accuracy:** the requirement was tickets *"created from this app,"* and a local ledger guarantees exactly that, with no risk of picking up manually-labeled Jira issues.
+- **Isolation:** ledger records are scoped per `UserId`, so concurrent users don't interfere with each other.
 
-### 6. Jira Workspace Limit: One per User
-**Decision:** Each user may connect at most one Jira workspace.
-**Reasoning:** Allowing multiple Jira workspaces per user was considered for flexibility, but for this PoC one workspace is sufficient to demonstrate the OAuth flow and ticket-creation path. Multi-workspace support can be added later if needed.
+### 6. REST API: Per-Project API Keys
+External callers authenticate via an `X-Api-Key` header, scoped to a specific user and Jira project. Plaintext keys are never stored — only a SHA-256 hash. Before creating a ticket, the backend resolves the key to its owning user and confirms that user still has an active Atlassian OAuth token, so API access never exceeds the underlying human user's permissions.
 
-### 7. Ticket History: Local DB over Jira-Only Query
-**Decision:** Tickets created through the app are persisted in the local database and listed from there, rather than querying Jira on every request as the sole source of truth.
-**Reasoning:** The assignment requires displaying only tickets *"that were created from this app."* Two approaches were considered:
+### 7. BlogScanner: Stateless Execution
+The Python worker always processes the latest blog post on each run, with no duplicate-post tracking. This keeps the worker focused on summarization and API integration for a clean one-shot demo; see [Known Limitations](#-known-limitations) for the production implication.
 
-* **Jira as source of truth:** Apply a dedicated label (or a hidden JSON property on the issue) and fetch matching issues via JQL. This is not significantly more complex—it is a tradeoff, not a capability gap. A hidden JSON property would also address the label-spoofing concern below.
-* **Local DB (chosen):** Record each created ticket in SQLite after a successful Jira API call.
+---
 
-Local persistence was chosen for simplicity and because it better fits the PoC constraints:
+## 🛠️ Detailed Setup
 
-* **Performance:** Listing tickets from the DB is faster than round-tripping to the Jira API on every page load.
-* **Resilience:** The dashboard can still show created tickets when Jira is temporarily unavailable.
-* **Accuracy:** A visible label can be applied manually by users in Jira, which would pollute a label-based filter. Jira also offers eventual consistency—records arrive, but not always immediately—so a JQL-based list may lag briefly after creation.
-* **Downside — stale records:** Tickets deleted in Jira are not removed from the local DB, so they continue to appear in the UI until reconciliation is implemented (e.g. periodic Jira sync or webhooks).
+### 1. Configure Backend Secrets
 
-**User separation:** When two users connect to the same Jira workspace and share a project, tickets created by one user are not shown to the other because records are scoped per app user in the DB. That aligns with the assignment's multi-tenant intent, though the exact interpretation of *"users separation"* is somewhat open to debate.
+From `IdentityHub/src/JiraIntegration.Server`, store secrets outside the project folder:
 
-### 8. REST API Authentication: Per-Project API Keys
-**Decision:** External callers authenticate with an API key scoped to a specific user and Jira project. Keys are generated per project, hashed at rest in the database, and passed on each request via the `X-Api-Key` header.
-**Reasoning:** The assignment requires programmatic ticket creation via REST, with an API key tied to a user and a project key supplied as part of the request. Before creating a ticket, the backend resolves the key to its owning user and verifies that user still has write permission to the target project in Jira (returning `403` if not).
-
-* **One key per project:** Each user can hold at most one active key per Jira project. Regenerating revokes the previous key for that project and issues a new one.
-* **Secure storage:** Plaintext keys are never persisted—only a one-way hash is stored. The full key is returned once at generation/regeneration time.
-* **UI management:** The dashboard exposes **Generate**, **Regenerate**, and **Copy** controls so users can create and retrieve keys without leaving the portal.
-* **Request scoping:** The `POST /api/v1/nhi-findings` body includes `ProjectKey`, `Title`, and `Description`. If the API key is bound to a project, the request's `ProjectKey` must match; otherwise the key's scoped project is used.
-
-### 9. BlogScanner: No Duplicate-Post Tracking
-**Decision:** The worker always processes the latest blog post on each run and does not skip posts that were already summarized.
-**Reasoning:** A natural enhancement would persist the last processed post URL (or feed item ID) in the database and exit early when unchanged. That would prevent duplicate Jira tickets when the worker runs on a schedule while the blog index still points at the same article. The change is straightforward—a small table or a single state row—but it was considered out of scope for this assignment. The current design favors simplicity and a one-shot demo path over idempotent scheduled execution.
-
-## Security notes
-
-- Jira OAuth tokens are encrypted at rest via ASP.NET Data Protection (`TokenEncryptionService`).
-- Data Protection keys are persisted locally for development; on Windows they are encrypted at rest with DPAPI. In production on Linux or containers, keys would be protected with a certificate or a managed store such as Azure Key Vault.
-- Application secrets (JWT signing key, Atlassian OAuth credentials) are supplied via user-secrets or environment variables and are not committed to source control.
-- Local runtime artifacts (`oasis.db`, `data-protection-keys/`) are gitignored and should be omitted from any submission archive.
-
-## 🚀 Getting Started
-
-### Prerequisites
-
-- [.NET 9 SDK](https://dotnet.microsoft.com/download)
-- [Node.js](https://nodejs.org/) (for the Angular frontend)
-- An [Atlassian OAuth 2.0 (3LO) app](https://developer.atlassian.com/cloud/jira/platform/oauth-2-3lo-apps/) (only required for Jira connect)
-
-### Quick demo path
-
-1. Clone the repo and configure backend secrets (JWT + Atlassian OAuth).
-2. Run `.\reset-demo.ps1` in `IdentityHub/src/JiraIntegration.Server` to create a clean database with test users (see below).
-3. Start the API (`dotnet run` in `IdentityHub/src/JiraIntegration.Server`).
-4. Start the Angular portal and log in with **demo** / **Demo123!** or **testuser** / **Test123!**.
-5. Connect your Jira workspace, select a project, and create a ticket from the dashboard.
-6. Generate an API key for the project and call `POST /api/v1/nhi-findings` (see example below).
-7. *(Optional)* Run the BlogScanner worker to create a ticket from a blog post via the REST API.
-
-### 1. Clone the repository
-
-```bash
-git clone https://github.com/idoshamir/oasis.git
-cd oasis
-```
-
-### 2. Configure backend secrets (required)
-
-The backend stores secrets in [.NET User Secrets](https://learn.microsoft.com/en-us/aspnet/core/security/app-secrets) during local development. These are loaded automatically when `ASPNETCORE_ENVIRONMENT=Development` and never live in the repo or project folder.
-
-From the backend project directory:
-
-```bash
-cd IdentityHub/src/JiraIntegration.Server
-```
-
-Set the required secrets (run each command once per machine):
-
-**JWT signing key** — signs and validates login JWTs (minimum 32 characters):
-
+**JWT signing key** (minimum 32 characters):
 ```bash
 dotnet user-secrets set "Jwt:Secret" "DevOnlySecretKey_ChangeInProduction_Min32Chars!"
 ```
 
-**Atlassian OAuth credentials** — create an [OAuth 2.0 (3LO) app](https://developer.atlassian.com/console/myapps) in the Atlassian developer console, then:
-
-1. Under **Authorization -> Add**, set the callback URL to `http://localhost:5282/api/jira/callback` (use your API server host and port).
-2. Under **Jira API**, add scopes: `read:jira-work`, `read:jira-user`, `write:jira-work`.
-3. Copy the **Client ID** and **Client Secret** from the app.
-
+**Atlassian OAuth credentials** — create an OAuth 2.0 (3LO) app with callback URL `http://localhost:5282/api/jira/callback` and scopes `read:jira-work`, `read:jira-user`, `write:jira-work`:
 ```bash
 dotnet user-secrets set "Atlassian:ClientId" "<your-atlassian-client-id>"
 dotnet user-secrets set "Atlassian:ClientSecret" "<your-atlassian-client-secret>"
 ```
 
-| Secret | Purpose | Required for |
-|--------|---------|--------------|
-| `Jwt:Secret` | Signs session tokens after login | All authenticated API usage |
-| `Atlassian:ClientId` | OAuth app identifier | Connecting Jira workspaces |
-| `Atlassian:ClientSecret` | OAuth app secret | Connecting Jira workspaces |
+### 2. Seed the Database
 
-Non-secret settings (redirect URLs, CORS origins, JWT issuer/audience) remain in `appsettings.json`.
-
-**Production:** use environment variables instead (`Jwt__Secret`, `Atlassian__ClientId`, `Atlassian__ClientSecret`).
-
-**Verify secrets are set:**
-
-```bash
-dotnet user-secrets list
-```
-
-### 3. Seed the first login user (required)
-
-The UI is login-only (no self-service registration). Use the included script to create a fresh SQLite database with a demo user.
-
-**Stop the API first** if it is already running — SQLite cannot be reset while the database file is locked.
+Make sure the API isn't running, then from `IdentityHub/src/JiraIntegration.Server`:
 
 ```powershell
-cd IdentityHub/src/JiraIntegration.Server
-.\reset-demo.ps1
+./reset-demo.ps1
 ```
+
+Requires the EF Core CLI tools: `dotnet tool install --global dotnet-ef`.
+
+This creates `oasis.db` and seeds two isolated demo accounts:
 
 | Username | Password |
 |---|---|
 | `demo` | `Demo123!` |
 | `testuser` | `Test123!` |
 
-Requires the [EF Core CLI tools](https://learn.microsoft.com/en-us/ef/core/cli/dotnet): `dotnet tool install --global dotnet-ef`
+> These are local, PoC-only credentials with no real data behind them — don't reuse this pattern past the demo.
 
-The script deletes the local database, reapplies EF Core migrations, and applies `demo.sql` to insert these users with no Jira connection, API keys, or ticket history. You can run it again at any time to wipe local data back to this state.
+### 3. Run the Application
 
-### 4. Start the Backend API
-
+**Backend API:**
 ```bash
+cd IdentityHub/src/JiraIntegration.Server
 dotnet run
 ```
+Runs on `localhost:5282`.
 
-The SQLite database is created and migrated automatically on first startup.
-
-Default URLs:
-- API: `http://localhost:5282`
-- Jira OAuth callback: `http://localhost:5282/api/jira/callback` (must match your Atlassian app settings)
-
-### 5. Start the Frontend Portal
-
+**Frontend Angular client:**
 ```bash
-cd ../JiraIntegration.Client
+cd IdentityHub/src/JiraIntegration.Client
 npm install
 npm start
 ```
+Runs on `localhost:4200`.
 
-The UI runs at `http://localhost:4200`. Log in with one of the seeded accounts above (`demo` / `Demo123!` or `testuser` / `Test123!`).
+---
 
-### 6. REST API: create a ticket programmatically
+## 📡 REST API Usage
 
-After connecting Jira and generating an API key for a project in the dashboard, external callers can create tickets via:
+After connecting Jira and generating an API key in the UI, external systems (e.g., CI/CD pipelines) can create tickets programmatically:
 
 ```bash
 curl -X POST http://localhost:5282/api/v1/nhi-findings \
@@ -198,39 +145,30 @@ curl -X POST http://localhost:5282/api/v1/nhi-findings \
   -d '{"projectKey":"KAN","title":"Stale service account","description":"Service account inactive for 90+ days."}'
 ```
 
-Returns `201 Created` with the Jira issue key on success. The user who owns the API key must have an active Jira connection with write access to the target project.
+---
 
-### 7. (Optional) BlogScanner Worker
+## 🤖 Bonus: NHI Blog Digest Worker
 
-The worker polls a blog feed, summarizes the latest post with Google Gemini, and posts an NHI finding to the REST API. It is designed as a **scheduled, external task**—run it once manually for a quick test, or wire it to a scheduler for recurring checks.
+A stateless Python script that polls the Oasis blog, summarizes new posts with Google Gemini, and pushes the finding to the REST API above.
 
-#### One-time run (local test)
+1. Copy `.env.example` to `.env` in `IdentityHub/src/BlogScanner.Worker`.
+2. Populate `API_KEY` (generated from the UI), your target `PROJECT_KEY`, and `GEMINI_API_KEY`.
+3. Run it:
+   ```bash
+   cd IdentityHub/src/BlogScanner.Worker
+   pip install -r requirements.txt
+   python main.py
+   ```
 
-1. Complete steps 1–5 above and connect Jira for the seeded user.
-2. Copy `.env.example` to `.env` in `IdentityHub/src/BlogScanner.Worker`.
-3. Set `API_KEY` to a key from the dashboard.
-4. Set `PROJECT_KEY` to your Jira project key, `GEMINI_API_KEY` from [Google AI Studio](https://aistudio.google.com/apikey), and `API_ENDPOINT` to your running API (e.g. `http://localhost:5282/api/v1/nhi-findings`).
-5. Ensure `JiraIntegration.Server` is running, then install dependencies and run:
+This can be wired to Windows Task Scheduler, a cron job, or GitHub Actions for scheduled execution — see [Known Limitations](#-known-limitations) before scheduling it to run repeatedly.
 
-```bash
-cd IdentityHub/src/BlogScanner.Worker
-pip install -r requirements.txt
-python main.py
-```
+---
 
-#### Scheduling options
+## ⚠️ Known Limitations
 
-Because the worker is a stateless Python script that exits after one pass, any scheduler that can run a command with environment variables works. Common choices:
+These are deliberate scope cuts for the PoC, not oversights:
 
-| Option | Good for |
-|--------|----------|
-| **Windows Task Scheduler** | Simple local or demo setup—e.g. run hourly to poll for new posts while developing on Windows |
-| **GitHub Actions** (`schedule` cron workflow) | Hands-off runs against a deployed API; store `API_KEY`, `GEMINI_API_KEY`, and related vars as repository secrets |
-| **Linux/macOS cron** or **systemd timer** | Lightweight recurring runs on a VM or home server |
-| **Azure Functions / AWS Lambda** (timer trigger) | Production-style serverless scheduling with secrets in Key Vault or Parameter Store |
-
-**Simple Windows example (hourly):** In Task Scheduler, create a basic task that runs `python main.py` with *Start in* set to `IdentityHub\src\BlogScanner.Worker`. Either place a `.env` file in that folder or define the required variables in the task's environment. Set the trigger to repeat every hour (or daily at a fixed time for a quieter demo).
-
-**GitHub Actions example:** Add a workflow with `on: schedule: - cron: '0 * * * *'` that checks out the repo, runs `pip install -r requirements.txt`, and executes `python main.py` with secrets mapped to `API_KEY`, `PROJECT_KEY`, `GEMINI_API_KEY`, and `API_ENDPOINT` pointing at your hosted API.
-
-> **Note:** Without duplicate-post tracking (see decision **9** above), a recurring schedule will create a new Jira ticket for the same latest post on every run until a newer post appears. Use a manual one-shot run for demos, or add post-link persistence before enabling frequent schedules.
+- **Single Jira workspace per user** — sufficient to demonstrate the OAuth flow; multi-workspace support would need additional UI routing.
+- **No reconciliation with Jira deletions** — tickets deleted natively in Jira aren't removed from the local ledger. In production this would be handled via Atlassian webhooks.
+- **BlogScanner has no duplicate-post tracking** — every run re-processes the latest post. Running it on a recurring schedule (cron, Task Scheduler, GitHub Actions) as-is will create duplicate tickets; a production version would persist the last-seen post ID/timestamp.
+- **No self-service registration** — only the two seeded demo accounts exist; there's no sign-up flow.
