@@ -19,6 +19,9 @@ public sealed class DatabaseInitializer(IServiceScopeFactory scopeFactory, ILogg
         var revokedTokenRepository = scope.ServiceProvider.GetRequiredService<IRevokedTokenRepository>();
         await revokedTokenRepository.DeleteExpiredAsync(cancellationToken);
 
+        var refreshTokenRepository = scope.ServiceProvider.GetRequiredService<IRefreshTokenRepository>();
+        await refreshTokenRepository.DeleteExpiredAsync(cancellationToken);
+
         logger.LogInformation("Database initialized.");
     }
 

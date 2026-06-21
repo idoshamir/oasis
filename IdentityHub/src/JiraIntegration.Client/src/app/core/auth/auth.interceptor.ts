@@ -10,17 +10,18 @@ export const authInterceptor: HttpInterceptorFn = (request, next) => {
     return next(request);
   }
 
+  const withCredentials = request.clone({ withCredentials: true });
   if (request.url.includes('/auth/login')) {
-    return next(request);
+    return next(withCredentials);
   }
 
   const token = inject(AuthService).getToken();
   if (!token) {
-    return next(request);
+    return next(withCredentials);
   }
 
   return next(
-    request.clone({
+    withCredentials.clone({
       setHeaders: {
         Authorization: `Bearer ${token}`
       }

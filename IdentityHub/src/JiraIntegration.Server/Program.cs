@@ -1,3 +1,5 @@
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading.RateLimiting;
@@ -57,9 +59,11 @@ builder.Services.AddScoped<IApiKeyRepository, ApiKeyRepository>();
 builder.Services.AddScoped<IApiKeyService, ApiKeyService>();
 builder.Services.AddScoped<INhiTicketLedgerRepository, NhiTicketLedgerRepository>();
 builder.Services.AddScoped<IRevokedTokenRepository, RevokedTokenRepository>();
+builder.Services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
 builder.Services.AddScoped<IPasswordHasher, PasswordHasher>();
 builder.Services.AddScoped<ITokenEncryptionService, TokenEncryptionService>();
 builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
+builder.Services.AddScoped<IRefreshTokenService, RefreshTokenService>();
 builder.Services.AddScoped<ITokenRevocationService, TokenRevocationService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IJiraOAuthService, JiraOAuthService>();
@@ -113,6 +117,25 @@ builder.Services
         {
             OnTokenValidated = async context =>
             {
+                var services = context.HttpContext.RequestServices;
+                var cancellationToken = context.HttpContext.RequestAborted;
+
+                var subject = context.Principal?.FindFirstValue(JwtRegisteredClaimNames.Sub)
+                    ?? context.Principal?.FindFirstValue(ClaimTypes.NameIdentifier);
+                if (!Guid.TryParse(subject, out var userId))
+                {
+                    context.Fail("Token is missing a valid user identifier.");
+                    return;
+                }
+
+                var userRepository = services.GetRequiredService<IUserRepository>();
+                var user = await userRepository.GetByIdAsync(userId, cancellationToken);
+                if (user is null)
+                {
+                    context.Fail("User no longer exists.");
+                    return;
+                }
+
                 if (!context.Request.Headers.TryGetValue("Authorization", out var headerValues))
                 {
                     return;
@@ -126,10 +149,9 @@ builder.Services
                 }
 
                 var token = header[prefix.Length..].Trim();
-                var revocationService = context.HttpContext.RequestServices
-                    .GetRequiredService<ITokenRevocationService>();
+                var revocationService = services.GetRequiredService<ITokenRevocationService>();
 
-                if (await revocationService.IsRevokedAsync(token, context.HttpContext.RequestAborted))
+                if (await revocationService.IsRevokedAsync(token, cancellationToken))
                 {
                     context.Fail("Token has been revoked.");
                 }
@@ -199,7 +221,8 @@ builder.Services.AddCors(options =>
     {
         policy.WithOrigins(corsOrigins)
             .AllowAnyHeader()
-            .AllowAnyMethod();
+            .AllowAnyMethod()
+            .AllowCredentials();
     });
 });
 

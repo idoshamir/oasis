@@ -143,10 +143,34 @@ public interface IJiraTicketService
         CancellationToken cancellationToken = default);
 }
 
+public sealed record AuthSessionResult(string AccessToken, DateTimeOffset ExpiresAt, string RefreshToken);
+
+public sealed record RefreshTokenRotationResult(User User, string RefreshToken);
+
+public interface IRefreshTokenRepository
+{
+    Task CreateAsync(
+        Guid userId,
+        string tokenHash,
+        DateTimeOffset expiresAt,
+        CancellationToken cancellationToken = default);
+    Task<RefreshToken?> GetValidByHashAsync(string tokenHash, CancellationToken cancellationToken = default);
+    Task RevokeByHashAsync(string tokenHash, CancellationToken cancellationToken = default);
+    Task DeleteExpiredAsync(CancellationToken cancellationToken = default);
+}
+
+public interface IRefreshTokenService
+{
+    Task<string> IssueAsync(Guid userId, CancellationToken cancellationToken = default);
+    Task<RefreshTokenRotationResult?> RotateAsync(string refreshToken, CancellationToken cancellationToken = default);
+    Task RevokeAsync(string refreshToken, CancellationToken cancellationToken = default);
+}
+
 public interface IAuthService
 {
-    Task<AuthTokenResult?> LoginAsync(string username, string password, CancellationToken cancellationToken = default);
-    Task LogoutAsync(string accessToken, CancellationToken cancellationToken = default);
+    Task<AuthSessionResult?> LoginAsync(string username, string password, CancellationToken cancellationToken = default);
+    Task<AuthSessionResult?> RefreshAsync(string refreshToken, CancellationToken cancellationToken = default);
+    Task LogoutAsync(string? accessToken, string? refreshToken, CancellationToken cancellationToken = default);
 }
 
 public interface ITokenRevocationService

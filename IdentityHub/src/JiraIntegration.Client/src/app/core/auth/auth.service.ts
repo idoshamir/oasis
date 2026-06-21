@@ -1,6 +1,16 @@
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
-import { BehaviorSubject, Observable, catchError, map, of, tap, throwError } from 'rxjs';
+import {
+  BehaviorSubject,
+  Observable,
+  catchError,
+  finalize,
+  map,
+  of,
+  shareReplay,
+  tap,
+  throwError
+} from 'rxjs';
 
 import { environment } from '../../../environments/environment';
 import { extractHttpErrorMessage, SERVER_UNREACHABLE_MESSAGE } from '../http/http-error.utils';
@@ -15,8 +25,10 @@ import {
 export class AuthService {
   private readonly http = inject(HttpClient);
   private readonly apiBase = `${environment.apiUrl}/auth`;
+  private readonly httpOptions = { withCredentials: true };
 
   private readonly currentUserSubject = new BehaviorSubject<AuthUser | null>(this.restoreUser());
+  private refreshInFlight: Observable<AuthResponse> | null = null;
 
   readonly currentUser$ = this.currentUserSubject.asObservable();
   readonly isAuthenticated$ = this.currentUser$.pipe(map((user) => user !== null));
@@ -30,7 +42,7 @@ export class AuthService {
     }
 
     return this.http
-      .post<AuthResponse>(`${this.apiBase}/login`, { username, password })
+      .post<AuthResponse>(`${this.apiBase}/login`, { username, password }, this.httpOptions)
       .pipe(
         tap((response) => this.persistSession(response)),
         map(() => undefined),
@@ -39,18 +51,42 @@ export class AuthService {
   }
 
   logout(): Observable<void> {
-    const token = this.getToken();
-    if (!token) {
-      this.clearSession();
-      return of(undefined);
-    }
-
-    return this.http.post<void>(`${this.apiBase}/logout`, {}).pipe(
+    return this.http.post<void>(`${this.apiBase}/logout`, {}, this.httpOptions).pipe(
       tap(() => this.clearSession()),
       map(() => undefined),
       catchError(() => {
         this.clearSession();
         return of(undefined);
+      })
+    );
+  }
+
+  refreshSession(): Observable<AuthResponse> {
+    if (!this.refreshInFlight) {
+      this.refreshInFlight = this.http
+        .post<AuthResponse>(`${this.apiBase}/refresh`, {}, this.httpOptions)
+        .pipe(
+          tap((response) => this.persistSession(response)),
+          finalize(() => {
+            this.refreshInFlight = null;
+          }),
+          shareReplay(1)
+        );
+    }
+
+    return this.refreshInFlight;
+  }
+
+  tryRestoreSession(): Observable<boolean> {
+    if (this.isAuthenticated()) {
+      return of(true);
+    }
+
+    return this.refreshSession().pipe(
+      map(() => true),
+      catchError(() => {
+        this.clearSession();
+        return of(false);
       })
     );
   }
@@ -66,7 +102,6 @@ export class AuthService {
     }
 
     if (this.isTokenExpired(token)) {
-      this.clearSession();
       return false;
     }
 
@@ -88,7 +123,6 @@ export class AuthService {
   private restoreUser(): AuthUser | null {
     const token = sessionStorage.getItem(TOKEN_STORAGE_KEY);
     if (!token || this.isTokenExpired(token)) {
-      sessionStorage.removeItem(TOKEN_STORAGE_KEY);
       return null;
     }
 
