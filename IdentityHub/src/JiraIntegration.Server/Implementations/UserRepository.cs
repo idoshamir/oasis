@@ -7,8 +7,19 @@ namespace JiraIntegration.Server.Implementations;
 
 public sealed class UserRepository(AppDbContext dbContext) : IUserRepository
 {
-    public Task<User?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) =>
-        dbContext.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == id, cancellationToken);
+    public Task<User?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        var idText = id.ToString("D").ToLowerInvariant();
+        return dbContext.Users
+            .FromSqlInterpolated($"""
+                SELECT "Id", "PasswordHash", "Salt", "Username"
+                FROM "Users"
+                WHERE lower("Id") = {idText}
+                LIMIT 1
+                """)
+            .AsNoTracking()
+            .FirstOrDefaultAsync(cancellationToken);
+    }
 
     public Task<User?> GetByUsernameAsync(string username, CancellationToken cancellationToken = default) =>
         dbContext.Users.FirstOrDefaultAsync(u => u.Username == username, cancellationToken);

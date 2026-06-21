@@ -15,6 +15,7 @@ namespace JiraIntegration.Server.Controllers;
 [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
 public sealed class JiraAuthController(
     IOAuthStateStore oauthStateStore,
+    IUserRepository userRepository,
     IJiraOAuthService jiraOAuthService,
     IJiraOAuthPipeline jiraOAuthPipeline,
     IJiraConnectionRepository jiraConnectionRepository,
@@ -49,12 +50,21 @@ public sealed class JiraAuthController(
     [ProducesResponseType(typeof(JiraAuthUrlResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status503ServiceUnavailable)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
-    public IActionResult GetAuthUrl()
+    public async Task<IActionResult> GetAuthUrl(CancellationToken cancellationToken)
     {
         var userId = GetUserId();
         if (userId is null)
         {
             logger.LogWarning("OAuth authorization URL request rejected: user not authenticated");
+            return Unauthorized();
+        }
+
+        var user = await userRepository.GetByIdAsync(userId.Value, cancellationToken);
+        if (user is null)
+        {
+            logger.LogWarning(
+                "OAuth authorization URL request rejected: user {UserId} from token no longer exists",
+                userId.Value);
             return Unauthorized();
         }
 
@@ -91,12 +101,7 @@ public sealed class JiraAuthController(
             logger.LogInformation("OAuth callback completed successfully");
             return Redirect(redirectUrl);
         }
-        catch (HttpRequestException ex)
-        {
-            logger.LogWarning(ex, "Token exchange failed");
-            return Redirect(BuildFailureRedirectUrl());
-        }
-        catch (InvalidOperationException ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             logger.LogWarning(ex, "OAuth callback failed: {FailureReason}", ex.Message);
             return Redirect(BuildFailureRedirectUrl());

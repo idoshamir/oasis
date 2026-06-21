@@ -75,11 +75,12 @@ Local persistence was chosen for simplicity and because it better fits the PoC c
 ### Quick demo path
 
 1. Clone the repo and configure backend secrets (JWT + Atlassian OAuth).
-2. Set `SEED_USERNAME` and `SEED_PASSWORD`, then start the API (creates the first login user on first run).
-3. Start the Angular portal and log in with the seeded credentials.
-4. Connect your Jira workspace, select a project, and create a ticket from the dashboard.
-5. Generate an API key for the project and call `POST /api/v1/nhi-findings` (see example below).
-6. *(Optional)* Run the BlogScanner worker to create a ticket from a blog post via the REST API.
+2. Run `.\reset-demo.ps1` in `IdentityHub/src/JiraIntegration.Server` to create a clean database with test users (see below).
+3. Start the API (`dotnet run` in `IdentityHub/src/JiraIntegration.Server`).
+4. Start the Angular portal and log in with **demo** / **Demo123!** or **testuser** / **Test123!**.
+5. Connect your Jira workspace, select a project, and create a ticket from the dashboard.
+6. Generate an API key for the project and call `POST /api/v1/nhi-findings` (see example below).
+7. *(Optional)* Run the BlogScanner worker to create a ticket from a blog post via the REST API.
 
 ### 1. Clone the repository
 
@@ -108,7 +109,7 @@ dotnet user-secrets set "Jwt:Secret" "DevOnlySecretKey_ChangeInProduction_Min32C
 
 **Atlassian OAuth credentials** — create an [OAuth 2.0 (3LO) app](https://developer.atlassian.com/console/myapps) in the Atlassian developer console, then:
 
-1. Under **Configure → Authorization**, set the callback URL to `http://localhost:5282/api/jira/callback` (use your API server host and port).
+1. Under **Authorization -> Add**, set the callback URL to `http://localhost:5282/api/jira/callback` (use your API server host and port).
 2. Under **Jira API**, add scopes: `read:jira-work`, `read:jira-user`, `write:jira-work`.
 3. Copy the **Client ID** and **Client Secret** from the app.
 
@@ -135,23 +136,23 @@ dotnet user-secrets list
 
 ### 3. Seed the first login user (required)
 
-The UI is login-only (no self-service registration). On first startup, the API creates a user when `SEED_USERNAME` and `SEED_PASSWORD` environment variables are set. Seeding is skipped if that username already exists.
+The UI is login-only (no self-service registration). Use the included script to create a fresh SQLite database with a demo user.
 
-**Linux/macOS:**
-
-```bash
-export SEED_USERNAME=demo
-export SEED_PASSWORD=DemoPassword123!
-```
-
-**Windows PowerShell:**
+**Stop the API first** if it is already running — SQLite cannot be reset while the database file is locked.
 
 ```powershell
-$env:SEED_USERNAME = "demo"
-$env:SEED_PASSWORD = "DemoPassword123!"
+cd IdentityHub/src/JiraIntegration.Server
+.\reset-demo.ps1
 ```
 
-Optional: set `SEED_API_KEY_NAME` to label the dev API key created alongside the user (defaults to `BlogScanner dev key`). On first run in Development, the API logs the full plaintext API key once — save it if you plan to use the BlogScanner worker or REST API before generating a key in the UI.
+| Username | Password |
+|---|---|
+| `demo` | `Demo123!` |
+| `testuser` | `Test123!` |
+
+Requires the [EF Core CLI tools](https://learn.microsoft.com/en-us/ef/core/cli/dotnet): `dotnet tool install --global dotnet-ef`
+
+The script deletes the local database, reapplies EF Core migrations, and applies `demo.sql` to insert these users with no Jira connection, API keys, or ticket history. You can run it again at any time to wipe local data back to this state.
 
 ### 4. Start the Backend API
 
@@ -159,7 +160,7 @@ Optional: set `SEED_API_KEY_NAME` to label the dev API key created alongside the
 dotnet run
 ```
 
-The SQLite database is created and migrated automatically on first startup. If seed env vars are set, the first user is created at the same time.
+The SQLite database is created and migrated automatically on first startup.
 
 Default URLs:
 - API: `http://localhost:5282`
@@ -173,7 +174,7 @@ npm install
 npm start
 ```
 
-The UI runs at `http://localhost:4200`. Log in with the seeded username and password.
+The UI runs at `http://localhost:4200`. Log in with one of the seeded accounts above (`demo` / `Demo123!` or `testuser` / `Test123!`).
 
 ### 6. REST API: create a ticket programmatically
 
@@ -194,7 +195,7 @@ The worker polls a blog feed, summarizes the latest post with Google Gemini, and
 
 1. Complete steps 1–5 above and connect Jira for the seeded user.
 2. Copy `.env.example` to `.env` in `IdentityHub/src/BlogScanner.Worker`.
-3. Set `API_KEY` to a key from the dashboard (or the dev key logged on first seed).
+3. Set `API_KEY` to a key from the dashboard.
 4. Set `PROJECT_KEY` to your Jira project key and `GEMINI_API_KEY` from [Google AI Studio](https://aistudio.google.com/apikey).
 5. Install dependencies and run:
 

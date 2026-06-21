@@ -12,6 +12,13 @@ import requests
 from bs4 import BeautifulSoup
 from pydantic import BaseModel, Field, ValidationError, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from tenacity import (
+    RetryCallState,
+    retry,
+    retry_if_exception,
+    stop_after_attempt,
+    wait_exponential,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +30,9 @@ MAX_CONTENT_CHARS = 10_000
 MAX_TITLE_LENGTH = 255
 MAX_DESCRIPTION_LENGTH = 5000
 TICKET_TITLE_PREFIX = "NHI Blog Digest: "
+GEMINI_MAX_RETRIES = 3
+GEMINI_RETRY_BASE_DELAY_SECONDS = 2.0
+GEMINI_RETRYABLE_STATUS_CODES = frozenset({429, 500, 502, 503, 504})
 
 
 class Settings(BaseSettings):
@@ -31,6 +41,7 @@ class Settings(BaseSettings):
     api_key: str = Field(alias="API_KEY")
     project_key: str = Field(alias="PROJECT_KEY")
     gemini_api_key: str = Field(alias="GEMINI_API_KEY")
+    gemini_model: str = Field(default="gemini-2.5-flash", alias="GEMINI_MODEL")
     api_endpoint: str = Field(alias="API_ENDPOINT")
 
     @field_validator("gemini_api_key", mode="before")
@@ -168,16 +179,49 @@ def normalize_gemini_summary(raw: str) -> str:
     return stripped
 
 
-def summarize_with_gemini(text: str, api_key: str) -> str:
+def _is_retryable_gemini_error(exc: BaseException) -> bool:
+    return isinstance(exc, APIError) and exc.code in GEMINI_RETRYABLE_STATUS_CODES
+
+
+def _log_gemini_retry(retry_state: RetryCallState) -> None:
+    if retry_state.outcome is None:
+        return
+
+    exc = retry_state.outcome.exception()
+    if not isinstance(exc, APIError):
+        return
+
+    logger.warning(
+        "Gemini API call failed (attempt %d/%d, code=%s), retrying: %s",
+        retry_state.attempt_number,
+        GEMINI_MAX_RETRIES,
+        exc.code,
+        exc,
+    )
+
+
+@retry(
+    retry=retry_if_exception(_is_retryable_gemini_error),
+    stop=stop_after_attempt(GEMINI_MAX_RETRIES),
+    wait=wait_exponential(
+        multiplier=GEMINI_RETRY_BASE_DELAY_SECONDS,
+        min=GEMINI_RETRY_BASE_DELAY_SECONDS,
+        max=GEMINI_RETRY_BASE_DELAY_SECONDS * 4,
+    ),
+    before_sleep=_log_gemini_retry,
+    reraise=True,
+)
+def _generate_gemini_content(client: genai.Client, model: str, prompt: str):
+    return client.models.generate_content(model=model, contents=prompt)
+
+
+def summarize_with_gemini(text: str, api_key: str, model: str) -> str:
     client = genai.Client(api_key=api_key)
     prompt_template = load_summary_prompt()
     prompt = prompt_template.format(content=text[:MAX_CONTENT_CHARS])
 
     try:
-        response = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=prompt,
-        )
+        response = _generate_gemini_content(client, model, prompt)
     except APIError as exc:
         raise RuntimeError(f"Gemini API call failed: {exc}") from exc
 
@@ -269,7 +313,9 @@ def main() -> int:
 
     try:
         post = fetch_latest_post()
-        summary = summarize_with_gemini(post.body, settings.gemini_api_key)
+        summary = summarize_with_gemini(
+            post.body, settings.gemini_api_key, settings.gemini_model
+        )
         create_jira_ticket(settings, post.title, summary, post.link)
     except requests.RequestException as exc:
         logger.error("Network error: %s", exc)

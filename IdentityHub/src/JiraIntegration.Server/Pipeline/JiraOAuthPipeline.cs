@@ -7,6 +7,7 @@ namespace JiraIntegration.Server.Pipeline;
 
 public sealed class JiraOAuthPipeline(
     IOAuthStateStore oauthStateStore,
+    IUserRepository userRepository,
     IJiraOAuthService jiraOAuthService,
     IJiraConnectionRepository jiraConnectionRepository,
     ITokenEncryptionService tokenEncryptionService,
@@ -28,6 +29,13 @@ public sealed class JiraOAuthPipeline(
             throw new InvalidOperationException("Invalid or expired OAuth state.");
         }
 
+        var user = await userRepository.GetByIdAsync(userId.Value, cancellationToken);
+        if (user is null)
+        {
+            throw new InvalidOperationException(
+                "OAuth session user no longer exists. Sign out, sign in again, and retry connecting Jira.");
+        }
+
         var tokens = await jiraOAuthService.ExchangeCodeAsync(code, cancellationToken);
         var resource = await jiraOAuthService.GetPrimaryAccessibleResourceAsync(tokens.AccessToken, cancellationToken);
 
@@ -35,8 +43,8 @@ public sealed class JiraOAuthPipeline(
         {
             UserId = userId.Value,
             AtlassianCloudId = resource.Id,
-            WorkspaceName = resource.Name,
-            WorkspaceUrl = resource.Url,
+            WorkspaceName = resource.Name ?? string.Empty,
+            WorkspaceUrl = resource.Url ?? string.Empty,
             EncryptedAccessToken = tokenEncryptionService.Encrypt(tokens.AccessToken),
             EncryptedRefreshToken = tokenEncryptionService.Encrypt(tokens.RefreshToken),
             ExpiresAt = DateTimeOffset.UtcNow.AddSeconds(tokens.ExpiresIn)
