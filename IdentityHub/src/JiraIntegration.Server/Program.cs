@@ -25,6 +25,9 @@ builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptio
 builder.Services.Configure<AtlassianOptions>(builder.Configuration.GetSection(AtlassianOptions.SectionName));
 builder.Services.Configure<AppDataProtectionOptions>(builder.Configuration.GetSection(AppDataProtectionOptions.SectionName));
 
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<ICurrentUserAccessor, CurrentUserAccessor>();
+
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseSqlite(builder.Configuration.GetConnectionString("Default")));
 
@@ -44,6 +47,7 @@ builder.Services.AddDataProtection()
 
 builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<IJiraConnectionRepository, JiraConnectionRepository>();
+builder.Services.AddScoped<IJiraConnectionValidator, JiraConnectionValidator>();
 builder.Services.AddScoped<IApiKeyRepository, ApiKeyRepository>();
 builder.Services.AddScoped<IApiKeyService, ApiKeyService>();
 builder.Services.AddScoped<INhiTicketLedgerRepository, NhiTicketLedgerRepository>();
@@ -55,13 +59,19 @@ builder.Services.AddScoped<ITokenRevocationService, TokenRevocationService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IJiraOAuthService, JiraOAuthService>();
 builder.Services.AddScoped<IJiraTicketService, JiraTicketService>();
+builder.Services.AddSingleton<IJiraTokenRefreshService, JiraTokenRefreshService>();
 builder.Services.AddSingleton<IOAuthStateStore, OAuthStateStore>();
 builder.Services.AddScoped<ITicketCreationPipeline, TicketCreationPipeline>();
 builder.Services.AddScoped<IJiraOAuthPipeline, JiraOAuthPipeline>();
 builder.Services.AddScoped<DbSeeder>();
 builder.Services.AddHostedService<DatabaseInitializer>();
 
-builder.Services.AddHttpClient("Atlassian");
+var atlassianOptions = builder.Configuration.GetSection(AtlassianOptions.SectionName).Get<AtlassianOptions>()
+    ?? new AtlassianOptions();
+builder.Services.AddHttpClient("Atlassian", client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(atlassianOptions.HttpTimeoutSeconds);
+});
 
 var jwtOptions = builder.Configuration.GetSection(JwtOptions.SectionName).Get<JwtOptions>()
     ?? throw new InvalidOperationException("Jwt configuration is required.");
@@ -192,8 +202,8 @@ var app = builder.Build();
 
 if (app.Environment.IsDevelopment())
 {
-    var atlassianOptions = app.Configuration.GetSection(AtlassianOptions.SectionName).Get<AtlassianOptions>();
-    if (atlassianOptions is not null && !atlassianOptions.IsConfigured())
+    var devAtlassianOptions = app.Configuration.GetSection(AtlassianOptions.SectionName).Get<AtlassianOptions>();
+    if (devAtlassianOptions is not null && !devAtlassianOptions.IsConfigured())
     {
         app.Logger.LogWarning(
             "Atlassian OAuth is not configured. Jira connect will be unavailable until secrets are set. See README.md for setup.");

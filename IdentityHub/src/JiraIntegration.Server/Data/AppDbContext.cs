@@ -27,6 +27,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
                 if (property.ClrType == typeof(Guid))
                 {
                     property.SetValueConverter(LowercaseGuidConverter);
+                    property.SetCollation("NOCASE");
                 }
             }
         }

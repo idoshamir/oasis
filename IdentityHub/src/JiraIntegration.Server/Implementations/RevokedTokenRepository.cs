@@ -7,12 +7,14 @@ namespace JiraIntegration.Server.Implementations;
 
 public sealed class RevokedTokenRepository(AppDbContext dbContext) : IRevokedTokenRepository
 {
-    public Task<bool> IsRevokedAsync(string tokenHash, CancellationToken cancellationToken = default) =>
-        dbContext.RevokedTokens
+    public async Task<bool> IsRevokedAsync(string tokenHash, CancellationToken cancellationToken = default)
+    {
+        var entry = await dbContext.RevokedTokens
             .AsNoTracking()
-            .AnyAsync(
-                r => r.TokenHash == tokenHash && r.ExpiresAt > DateTimeOffset.UtcNow,
-                cancellationToken);
+            .FirstOrDefaultAsync(r => r.TokenHash == tokenHash, cancellationToken);
+
+        return entry is not null && entry.ExpiresAt > DateTimeOffset.UtcNow;
+    }
 
     public async Task RevokeAsync(
         string tokenHash,
@@ -40,8 +42,19 @@ public sealed class RevokedTokenRepository(AppDbContext dbContext) : IRevokedTok
         await dbContext.SaveChangesAsync(cancellationToken);
     }
 
-    public Task DeleteExpiredAsync(CancellationToken cancellationToken = default) =>
-        dbContext.RevokedTokens
-            .Where(r => r.ExpiresAt <= DateTimeOffset.UtcNow)
-            .ExecuteDeleteAsync(cancellationToken);
+    public async Task DeleteExpiredAsync(CancellationToken cancellationToken = default)
+    {
+        // SQLite cannot translate DateTimeOffset in WHERE; filter in memory after loading.
+        var now = DateTimeOffset.UtcNow;
+        var all = await dbContext.RevokedTokens.ToListAsync(cancellationToken);
+        var expired = all.Where(r => r.ExpiresAt <= now).ToList();
+
+        if (expired.Count == 0)
+        {
+            return;
+        }
+
+        dbContext.RevokedTokens.RemoveRange(expired);
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
 }

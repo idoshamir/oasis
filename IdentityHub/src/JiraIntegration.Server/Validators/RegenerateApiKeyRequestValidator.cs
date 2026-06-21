@@ -7,8 +7,6 @@ public sealed class RegenerateApiKeyRequestValidator : AbstractValidator<Regener
 {
     public RegenerateApiKeyRequestValidator()
     {
-        RuleFor(x => x.ProjectKey)
-            .NotEmpty()
-            .MaximumLength(32);
+        RuleFor(x => x.ProjectKey).ValidProjectKey();
     }
 }

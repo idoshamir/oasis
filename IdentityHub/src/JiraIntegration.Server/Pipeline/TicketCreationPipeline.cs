@@ -9,8 +9,8 @@ namespace JiraIntegration.Server.Pipeline;
 
 public sealed class TicketCreationPipeline(
     IJiraConnectionRepository jiraConnectionRepository,
-    ITokenEncryptionService tokenEncryptionService,
-    IJiraOAuthService jiraOAuthService,
+    IJiraConnectionValidator jiraConnectionValidator,
+    IJiraTokenRefreshService jiraTokenRefreshService,
     IJiraTicketService jiraTicketService,
     INhiTicketLedgerRepository ledgerRepository,
     ILogger<TicketCreationPipeline> logger) : ITicketCreationPipeline
@@ -19,13 +19,13 @@ public sealed class TicketCreationPipeline(
         Guid userId,
         CancellationToken cancellationToken = default)
     {
-        var connection = await jiraConnectionRepository.GetByUserIdAsync(userId, cancellationToken);
+        var connection = await jiraConnectionValidator.GetUsableAsync(userId, cancellationToken);
         if (connection is null)
         {
             return null;
         }
 
-        var projects = await GetCreatableProjectsWithTokenRefreshAsync(connection, cancellationToken);
+        var projects = await GetCreatableProjectsWithTokenRefreshAsync(userId, connection, cancellationToken);
 
         var selectedProjectKey = string.IsNullOrWhiteSpace(connection.DefaultProjectKey)
             ? null
@@ -72,14 +72,14 @@ public sealed class TicketCreationPipeline(
             throw new ArgumentException("Title is required.");
         }
 
-        var connection = await jiraConnectionRepository.GetByUserIdAsync(userId, cancellationToken);
+        var connection = await jiraConnectionValidator.GetUsableAsync(userId, cancellationToken);
         if (connection is null)
         {
             logger.LogWarning("Ticket creation failed for user {UserId}: Jira not connected", userId);
             throw new JiraNotConnectedException();
         }
 
-        var accessToken = await GetValidAccessTokenAsync(connection, cancellationToken);
+        var accessToken = await jiraTokenRefreshService.GetValidAccessTokenAsync(userId, cancellationToken);
         var projectTarget = await ResolveProjectTargetAsync(connection, accessToken, projectKey, cancellationToken);
 
         if (!projectTarget.ProjectKey.Equals(connection.DefaultProjectKey, StringComparison.OrdinalIgnoreCase) ||
@@ -128,33 +128,12 @@ public sealed class TicketCreationPipeline(
     private static string BuildIssueBrowseUrl(string workspaceUrl, string issueKey) =>
         $"{workspaceUrl.TrimEnd('/')}/browse/{issueKey}";
 
-    private async Task<string> GetValidAccessTokenAsync(
-        JiraConnection connection,
-        CancellationToken cancellationToken,
-        bool forceRefresh = false)
-    {
-        if (!forceRefresh && connection.ExpiresAt > DateTimeOffset.UtcNow.AddMinutes(1))
-        {
-            return tokenEncryptionService.Decrypt(connection.EncryptedAccessToken);
-        }
-
-        var refreshToken = tokenEncryptionService.Decrypt(connection.EncryptedRefreshToken);
-        var refreshed = await jiraOAuthService.RefreshAccessTokenAsync(refreshToken, cancellationToken);
-
-        connection.EncryptedAccessToken = tokenEncryptionService.Encrypt(refreshed.AccessToken);
-        connection.EncryptedRefreshToken = tokenEncryptionService.Encrypt(refreshed.RefreshToken);
-        connection.ExpiresAt = DateTimeOffset.UtcNow.AddSeconds(refreshed.ExpiresIn);
-        await jiraConnectionRepository.SaveAsync(connection, cancellationToken);
-
-        logger.LogInformation("Refreshed Jira access token for user {UserId}", connection.UserId);
-        return refreshed.AccessToken;
-    }
-
     private async Task<IReadOnlyList<JiraProjectOption>> GetCreatableProjectsWithTokenRefreshAsync(
+        Guid userId,
         JiraConnection connection,
         CancellationToken cancellationToken)
     {
-        var accessToken = await GetValidAccessTokenAsync(connection, cancellationToken);
+        var accessToken = await jiraTokenRefreshService.GetValidAccessTokenAsync(userId, cancellationToken);
         try
         {
             return await jiraTicketService.GetCreatableProjectsAsync(
@@ -164,7 +143,10 @@ public sealed class TicketCreationPipeline(
         }
         catch (InvalidOperationException ex) when (ex.Message.Contains("unauthorized", StringComparison.OrdinalIgnoreCase))
         {
-            accessToken = await GetValidAccessTokenAsync(connection, cancellationToken, forceRefresh: true);
+            accessToken = await jiraTokenRefreshService.GetValidAccessTokenAsync(
+                userId,
+                cancellationToken,
+                forceRefresh: true);
             return await jiraTicketService.GetCreatableProjectsAsync(
                 connection.AtlassianCloudId,
                 accessToken,

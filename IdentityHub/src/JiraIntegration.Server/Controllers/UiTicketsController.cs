@@ -1,4 +1,3 @@
-using System.Security.Claims;
 using JiraIntegration.Server.Interfaces;
 using JiraIntegration.Server.Models.Common;
 using JiraIntegration.Server.Models.Exceptions;
@@ -14,6 +13,7 @@ namespace JiraIntegration.Server.Controllers;
 [Route("api/ui/tickets")]
 [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
 public sealed class UiTicketsController(
+    ICurrentUserAccessor currentUserAccessor,
     ITicketCreationPipeline ticketCreationPipeline) : ControllerBase
 {
     [HttpGet("projects")]
@@ -21,7 +21,7 @@ public sealed class UiTicketsController(
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<IActionResult> GetProjects(CancellationToken cancellationToken)
     {
-        var userId = GetUserId();
+        var userId = currentUserAccessor.GetUserId();
         if (userId is null)
         {
             return Unauthorized();
@@ -36,6 +36,10 @@ public sealed class UiTicketsController(
             }
 
             return Ok(result);
+        }
+        catch (JiraNotConnectedException)
+        {
+            return Ok(new JiraProjectsResponse([], null));
         }
         catch (InvalidOperationException ex)
         {
@@ -52,7 +56,7 @@ public sealed class UiTicketsController(
         [FromBody] CreateUiTicketRequest request,
         CancellationToken cancellationToken)
     {
-        var userId = GetUserId();
+        var userId = currentUserAccessor.GetUserId();
         if (userId is null)
         {
             return Unauthorized();
@@ -98,7 +102,7 @@ public sealed class UiTicketsController(
         [FromQuery] string? projectKey,
         CancellationToken cancellationToken)
     {
-        var userId = GetUserId();
+        var userId = currentUserAccessor.GetUserId();
         if (userId is null)
         {
             return Unauthorized();
@@ -121,12 +125,5 @@ public sealed class UiTicketsController(
         {
             return BadRequest(new ErrorResponse(ex.Message, "jira_error"));
         }
-    }
-
-    private Guid? GetUserId()
-    {
-        var sub = User.FindFirstValue(ClaimTypes.NameIdentifier)
-            ?? User.FindFirstValue("sub");
-        return Guid.TryParse(sub, out var userId) ? userId : null;
     }
 }

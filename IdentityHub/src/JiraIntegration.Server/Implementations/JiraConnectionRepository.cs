@@ -38,4 +38,18 @@ public sealed class JiraConnectionRepository(AppDbContext dbContext) : IJiraConn
 
         await dbContext.SaveChangesAsync(cancellationToken);
     }
+
+    public async Task<bool> DeleteByUserIdAsync(Guid userId, CancellationToken cancellationToken = default)
+    {
+        var connection = await dbContext.JiraConnections
+            .FirstOrDefaultAsync(c => c.UserId == userId, cancellationToken);
+        if (connection is null)
+        {
+            return false;
+        }
+
+        dbContext.JiraConnections.Remove(connection);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return true;
+    }
 }

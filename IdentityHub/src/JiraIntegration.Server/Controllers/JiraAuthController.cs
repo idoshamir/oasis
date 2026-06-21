@@ -1,4 +1,3 @@
-using System.Security.Claims;
 using JiraIntegration.Server.Interfaces;
 using JiraIntegration.Server.Models.Common;
 using JiraIntegration.Server.Models.Jira;
@@ -14,27 +13,29 @@ namespace JiraIntegration.Server.Controllers;
 [Route("api/jira")]
 [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
 public sealed class JiraAuthController(
+    ICurrentUserAccessor currentUserAccessor,
     IOAuthStateStore oauthStateStore,
     IUserRepository userRepository,
     IJiraOAuthService jiraOAuthService,
     IJiraOAuthPipeline jiraOAuthPipeline,
-    IJiraConnectionRepository jiraConnectionRepository,
+    IJiraConnectionValidator jiraConnectionValidator,
     IOptions<AtlassianOptions> atlassianOptions,
     ILogger<JiraAuthController> logger) : ControllerBase
 {
     private readonly AtlassianOptions _atlassianOptions = atlassianOptions.Value;
+
     [HttpGet("connection")]
     [ProducesResponseType(typeof(JiraConnectionStatusResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<IActionResult> GetConnection(CancellationToken cancellationToken)
     {
-        var userId = GetUserId();
+        var userId = currentUserAccessor.GetUserId();
         if (userId is null)
         {
             return Unauthorized();
         }
 
-        var connection = await jiraConnectionRepository.GetByUserIdAsync(userId.Value, cancellationToken);
+        var connection = await jiraConnectionValidator.GetUsableAsync(userId.Value, cancellationToken);
         if (connection is null)
         {
             return Ok(new JiraConnectionStatusResponse(false, null, null));
@@ -52,7 +53,7 @@ public sealed class JiraAuthController(
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<IActionResult> GetAuthUrl(CancellationToken cancellationToken)
     {
-        var userId = GetUserId();
+        var userId = currentUserAccessor.GetUserId();
         if (userId is null)
         {
             logger.LogWarning("OAuth authorization URL request rejected: user not authenticated");
@@ -118,12 +119,5 @@ public sealed class JiraAuthController(
 
         var separator = baseUrl.Contains('?', StringComparison.Ordinal) ? '&' : '?';
         return $"{baseUrl}{separator}jira_connected=false";
-    }
-
-    private Guid? GetUserId()
-    {
-        var sub = User.FindFirstValue(ClaimTypes.NameIdentifier)
-            ?? User.FindFirstValue("sub");
-        return Guid.TryParse(sub, out var userId) ? userId : null;
     }
 }

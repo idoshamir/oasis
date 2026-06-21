@@ -11,9 +11,7 @@ public sealed partial class CreateUiTicketRequestValidator : AbstractValidator<C
 
     public CreateUiTicketRequestValidator()
     {
-        RuleFor(x => x.ProjectKey)
-            .NotEmpty()
-            .MaximumLength(32);
+        RuleFor(x => x.ProjectKey).ValidProjectKey();
 
         RuleFor(x => x.Title)
             .NotEmpty()

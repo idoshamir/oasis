@@ -37,6 +37,12 @@ public interface IJiraConnectionRepository
 {
     Task<JiraConnection?> GetByUserIdAsync(Guid userId, CancellationToken cancellationToken = default);
     Task SaveAsync(JiraConnection connection, CancellationToken cancellationToken = default);
+    Task<bool> DeleteByUserIdAsync(Guid userId, CancellationToken cancellationToken = default);
+}
+
+public interface IJiraConnectionValidator
+{
+    Task<JiraConnection?> GetUsableAsync(Guid userId, CancellationToken cancellationToken = default);
 }
 
 public interface IApiKeyRepository
@@ -147,6 +153,20 @@ public interface ITokenRevocationService
 {
     Task RevokeAsync(string accessToken, CancellationToken cancellationToken = default);
     Task<bool> IsRevokedAsync(string accessToken, CancellationToken cancellationToken = default);
+}
+
+public interface ICurrentUserAccessor
+{
+    Guid? GetUserId();
+    string? GetScopedProjectKey();
+}
+
+public interface IJiraTokenRefreshService
+{
+    Task<string> GetValidAccessTokenAsync(
+        Guid userId,
+        CancellationToken cancellationToken = default,
+        bool forceRefresh = false);
 }
 
 public interface IRevokedTokenRepository

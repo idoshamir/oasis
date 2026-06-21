@@ -9,6 +9,7 @@ public sealed class AtlassianOptions
     public string RedirectUri { get; init; } = string.Empty;
     public string Scopes { get; init; } = string.Empty;
     public string FrontendSuccessUrl { get; init; } = string.Empty;
+    public int HttpTimeoutSeconds { get; init; } = 30;
 
     public bool IsConfigured() =>
         !string.IsNullOrWhiteSpace(ClientId) &&

@@ -1,4 +1,3 @@
-using System.Security.Claims;
 using JiraIntegration.Server.Interfaces;
 using JiraIntegration.Server.Models.ApiKeys;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -10,14 +9,16 @@ namespace JiraIntegration.Server.Controllers;
 [ApiController]
 [Route("api/ui/api-keys")]
 [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
-public sealed class UiApiKeysController(IApiKeyService apiKeyService) : ControllerBase
+public sealed class UiApiKeysController(
+    ICurrentUserAccessor currentUserAccessor,
+    IApiKeyService apiKeyService) : ControllerBase
 {
     [HttpGet]
     [ProducesResponseType(typeof(ApiKeyListResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     public async Task<IActionResult> ListKeys(CancellationToken cancellationToken)
     {
-        var userId = GetUserId();
+        var userId = currentUserAccessor.GetUserId();
         if (userId is null)
         {
             return Unauthorized();
@@ -39,7 +40,7 @@ public sealed class UiApiKeysController(IApiKeyService apiKeyService) : Controll
         [FromBody] GenerateApiKeyRequest request,
         CancellationToken cancellationToken)
     {
-        var userId = GetUserId();
+        var userId = currentUserAccessor.GetUserId();
         if (userId is null)
         {
             return Unauthorized();
@@ -69,7 +70,7 @@ public sealed class UiApiKeysController(IApiKeyService apiKeyService) : Controll
         [FromBody] RegenerateApiKeyRequest request,
         CancellationToken cancellationToken)
     {
-        var userId = GetUserId();
+        var userId = currentUserAccessor.GetUserId();
         if (userId is null)
         {
             return Unauthorized();
@@ -96,7 +97,7 @@ public sealed class UiApiKeysController(IApiKeyService apiKeyService) : Controll
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<IActionResult> RevokeKey(Guid id, CancellationToken cancellationToken)
     {
-        var userId = GetUserId();
+        var userId = currentUserAccessor.GetUserId();
         if (userId is null)
         {
             return Unauthorized();
@@ -109,12 +110,5 @@ public sealed class UiApiKeysController(IApiKeyService apiKeyService) : Controll
         }
 
         return NoContent();
-    }
-
-    private Guid? GetUserId()
-    {
-        var sub = User.FindFirstValue(ClaimTypes.NameIdentifier)
-            ?? User.FindFirstValue("sub");
-        return Guid.TryParse(sub, out var userId) ? userId : null;
     }
 }

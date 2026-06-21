@@ -11,8 +11,6 @@ public sealed class GenerateApiKeyRequestValidator : AbstractValidator<GenerateA
             .NotEmpty()
             .MaximumLength(256);
 
-        RuleFor(x => x.ProjectKey)
-            .NotEmpty()
-            .MaximumLength(32);
+        RuleFor(x => x.ProjectKey).ValidProjectKey();
     }
 }

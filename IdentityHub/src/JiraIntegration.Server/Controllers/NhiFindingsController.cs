@@ -1,4 +1,3 @@
-using System.Security.Claims;
 using JiraIntegration.Server.Auth;
 using JiraIntegration.Server.Interfaces;
 using JiraIntegration.Server.Models.Common;
@@ -14,7 +13,9 @@ namespace JiraIntegration.Server.Controllers;
 [Route("api/v1/nhi-findings")]
 [Authorize(AuthenticationSchemes = ApiKeyAuthenticationDefaults.AuthenticationScheme)]
 [EnableRateLimiting("ExternalApi")]
-public sealed class NhiFindingsController(ITicketCreationPipeline ticketCreationPipeline) : ControllerBase
+public sealed class NhiFindingsController(
+    ICurrentUserAccessor currentUserAccessor,
+    ITicketCreationPipeline ticketCreationPipeline) : ControllerBase
 {
     [HttpPost]
     [ProducesResponseType(typeof(NhiFindingResponse), StatusCodes.Status201Created)]
@@ -26,13 +27,13 @@ public sealed class NhiFindingsController(ITicketCreationPipeline ticketCreation
         [FromBody] CreateNhiFindingRequest request,
         CancellationToken cancellationToken)
     {
-        var userId = GetUserId();
+        var userId = currentUserAccessor.GetUserId();
         if (userId is null)
         {
             return Unauthorized();
         }
 
-        var scopedProjectKey = User.FindFirstValue("projectKey");
+        var scopedProjectKey = currentUserAccessor.GetScopedProjectKey();
         if (!string.IsNullOrWhiteSpace(scopedProjectKey)
             && !string.IsNullOrWhiteSpace(request.ProjectKey)
             && !string.Equals(scopedProjectKey, request.ProjectKey, StringComparison.OrdinalIgnoreCase))
@@ -81,12 +82,5 @@ public sealed class NhiFindingsController(ITicketCreationPipeline ticketCreation
         {
             return BadRequest(new ErrorResponse(ex.Message, "jira_error"));
         }
-    }
-
-    private Guid? GetUserId()
-    {
-        var sub = User.FindFirstValue(ClaimTypes.NameIdentifier)
-            ?? User.FindFirstValue("userId");
-        return Guid.TryParse(sub, out var userId) ? userId : null;
     }
 }

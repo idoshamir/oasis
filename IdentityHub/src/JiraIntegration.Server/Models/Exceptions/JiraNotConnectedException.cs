@@ -6,4 +6,9 @@ public sealed class JiraNotConnectedException : Exception
         : base("User has not connected a Jira workspace.")
     {
     }
+
+    public JiraNotConnectedException(string message)
+        : base(message)
+    {
+    }
 }
