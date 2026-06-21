@@ -64,6 +64,10 @@ Local persistence was chosen for simplicity and because it better fits the PoC c
 * **UI management:** The dashboard exposes **Generate**, **Regenerate**, and **Copy** controls so users can create and retrieve keys without leaving the portal.
 * **Request scoping:** The `POST /api/v1/nhi-findings` body includes `ProjectKey`, `Title`, and `Description`. If the API key is bound to a project, the request's `ProjectKey` must match; otherwise the key's scoped project is used.
 
+### 9. BlogScanner: No Duplicate-Post Tracking
+**Decision:** The worker always processes the latest blog post on each run and does not skip posts that were already summarized.
+**Reasoning:** A natural enhancement would persist the last processed post URL (or feed item ID) in the database and exit early when unchanged. That would prevent duplicate Jira tickets when the worker runs on a schedule while the blog index still points at the same article. The change is straightforward—a small table or a single state row—but it was considered out of scope for this assignment. The current design favors simplicity and a one-shot demo path over idempotent scheduled execution.
+
 ## Security notes
 
 - Jira OAuth tokens are encrypted at rest via ASP.NET Data Protection (`TokenEncryptionService`).
@@ -198,13 +202,15 @@ Returns `201 Created` with the Jira issue key on success. The user who owns the 
 
 ### 7. (Optional) BlogScanner Worker
 
-The worker polls a blog feed, summarizes the latest post with Google Gemini, and posts an NHI finding to the REST API.
+The worker polls a blog feed, summarizes the latest post with Google Gemini, and posts an NHI finding to the REST API. It is designed as a **scheduled, external task**—run it once manually for a quick test, or wire it to a scheduler for recurring checks.
+
+#### One-time run (local test)
 
 1. Complete steps 1–5 above and connect Jira for the seeded user.
 2. Copy `.env.example` to `.env` in `IdentityHub/src/BlogScanner.Worker`.
 3. Set `API_KEY` to a key from the dashboard.
-4. Set `PROJECT_KEY` to your Jira project key and `GEMINI_API_KEY` from [Google AI Studio](https://aistudio.google.com/apikey).
-5. Install dependencies and run:
+4. Set `PROJECT_KEY` to your Jira project key, `GEMINI_API_KEY` from [Google AI Studio](https://aistudio.google.com/apikey), and `API_ENDPOINT` to your running API (e.g. `http://localhost:5282/api/v1/nhi-findings`).
+5. Ensure `JiraIntegration.Server` is running, then install dependencies and run:
 
 ```bash
 cd IdentityHub/src/BlogScanner.Worker
@@ -212,4 +218,19 @@ pip install -r requirements.txt
 python main.py
 ```
 
-Ensure `JiraIntegration.Server` is running before starting the worker.
+#### Scheduling options
+
+Because the worker is a stateless Python script that exits after one pass, any scheduler that can run a command with environment variables works. Common choices:
+
+| Option | Good for |
+|--------|----------|
+| **Windows Task Scheduler** | Simple local or demo setup—e.g. run hourly to poll for new posts while developing on Windows |
+| **GitHub Actions** (`schedule` cron workflow) | Hands-off runs against a deployed API; store `API_KEY`, `GEMINI_API_KEY`, and related vars as repository secrets |
+| **Linux/macOS cron** or **systemd timer** | Lightweight recurring runs on a VM or home server |
+| **Azure Functions / AWS Lambda** (timer trigger) | Production-style serverless scheduling with secrets in Key Vault or Parameter Store |
+
+**Simple Windows example (hourly):** In Task Scheduler, create a basic task that runs `python main.py` with *Start in* set to `IdentityHub\src\BlogScanner.Worker`. Either place a `.env` file in that folder or define the required variables in the task's environment. Set the trigger to repeat every hour (or daily at a fixed time for a quieter demo).
+
+**GitHub Actions example:** Add a workflow with `on: schedule: - cron: '0 * * * *'` that checks out the repo, runs `pip install -r requirements.txt`, and executes `python main.py` with secrets mapped to `API_KEY`, `PROJECT_KEY`, `GEMINI_API_KEY`, and `API_ENDPOINT` pointing at your hosted API.
+
+> **Note:** Without duplicate-post tracking (see decision **9** above), a recurring schedule will create a new Jira ticket for the same latest post on every run until a newer post appears. Use a manual one-shot run for demos, or add post-link persistence before enabling frequent schedules.
