@@ -41,9 +41,14 @@ var dataProtectionKeysDirectory = Path.IsPathRooted(dataProtectionOptions.KeysPa
     : new DirectoryInfo(Path.Combine(builder.Environment.ContentRootPath, dataProtectionOptions.KeysPath));
 Directory.CreateDirectory(dataProtectionKeysDirectory.FullName);
 
-builder.Services.AddDataProtection()
+var dataProtectionBuilder = builder.Services.AddDataProtection()
     .PersistKeysToFileSystem(dataProtectionKeysDirectory)
     .SetApplicationName("JiraIntegration.Server");
+
+if (OperatingSystem.IsWindows())
+{
+    dataProtectionBuilder.ProtectKeysWithDpapi();
+}
 
 builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<IJiraConnectionRepository, JiraConnectionRepository>();

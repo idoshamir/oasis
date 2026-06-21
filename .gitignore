@@ -1,4 +1,5 @@
 .env
+data-protection-keys/
 *.db
 *.db-shm
 *.db-wal

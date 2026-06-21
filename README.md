@@ -64,6 +64,13 @@ Local persistence was chosen for simplicity and because it better fits the PoC c
 * **UI management:** The dashboard exposes **Generate**, **Regenerate**, and **Copy** controls so users can create and retrieve keys without leaving the portal.
 * **Request scoping:** The `POST /api/v1/nhi-findings` body includes `ProjectKey`, `Title`, and `Description`. If the API key is bound to a project, the request's `ProjectKey` must match; otherwise the key's scoped project is used.
 
+## Security notes
+
+- Jira OAuth tokens are encrypted at rest via ASP.NET Data Protection (`TokenEncryptionService`).
+- Data Protection keys are persisted locally for development; on Windows they are encrypted at rest with DPAPI. In production on Linux or containers, keys would be protected with a certificate or a managed store such as Azure Key Vault.
+- Application secrets (JWT signing key, Atlassian OAuth credentials) are supplied via user-secrets or environment variables and are not committed to source control.
+- Local runtime artifacts (`oasis.db`, `data-protection-keys/`) are gitignored and should be omitted from any submission archive.
+
 ## 🚀 Getting Started
 
 ### Prerequisites
