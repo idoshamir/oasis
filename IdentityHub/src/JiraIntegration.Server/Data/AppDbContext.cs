@@ -14,6 +14,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<JiraConnection> JiraConnections => Set<JiraConnection>();
     public DbSet<ApiKey> ApiKeys => Set<ApiKey>();
     public DbSet<NhiTicketLedger> NhiTicketLedgers => Set<NhiTicketLedger>();
+    public DbSet<RevokedToken> RevokedTokens => Set<RevokedToken>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

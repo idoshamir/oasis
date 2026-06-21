@@ -9,6 +9,7 @@ public interface IPasswordHasher
     (string Hash, string Salt) HashPassword(string password);
     bool VerifyPassword(string password, string hash, string salt);
     string HashApiKey(string apiKey);
+    void RunConstantTimeVerification(string password);
 }
 
 public interface ITokenEncryptionService
@@ -146,6 +147,13 @@ public interface ITokenRevocationService
 {
     Task RevokeAsync(string accessToken, CancellationToken cancellationToken = default);
     Task<bool> IsRevokedAsync(string accessToken, CancellationToken cancellationToken = default);
+}
+
+public interface IRevokedTokenRepository
+{
+    Task<bool> IsRevokedAsync(string tokenHash, CancellationToken cancellationToken = default);
+    Task RevokeAsync(string tokenHash, DateTimeOffset expiresAt, CancellationToken cancellationToken = default);
+    Task DeleteExpiredAsync(CancellationToken cancellationToken = default);
 }
 
 public interface ITicketCreationPipeline

@@ -1,29 +1,29 @@
+using System.IdentityModel.Tokens.Jwt;
 using System.Security.Cryptography;
 using System.Text;
 using JiraIntegration.Server.Interfaces;
-using Microsoft.Extensions.Caching.Memory;
 
 namespace JiraIntegration.Server.Implementations;
 
-public sealed class TokenRevocationService(IMemoryCache memoryCache) : ITokenRevocationService
+public sealed class TokenRevocationService(IRevokedTokenRepository revokedTokenRepository) : ITokenRevocationService
 {
-    private const string CachePrefix = "revoked-token:";
-
-    public Task RevokeAsync(string accessToken, CancellationToken cancellationToken = default)
+    public async Task RevokeAsync(string accessToken, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(accessToken))
         {
-            return Task.CompletedTask;
+            return;
         }
 
-        var ttl = GetRemainingLifetime(accessToken);
-        if (ttl <= TimeSpan.Zero)
+        var expiresAt = TryGetExpiresAt(accessToken);
+        if (expiresAt is null || expiresAt <= DateTimeOffset.UtcNow)
         {
-            return Task.CompletedTask;
+            return;
         }
 
-        memoryCache.Set(GetCacheKey(accessToken), true, ttl);
-        return Task.CompletedTask;
+        await revokedTokenRepository.RevokeAsync(
+            GetTokenHash(accessToken),
+            expiresAt.Value,
+            cancellationToken);
     }
 
     public Task<bool> IsRevokedAsync(string accessToken, CancellationToken cancellationToken = default)
@@ -33,18 +33,25 @@ public sealed class TokenRevocationService(IMemoryCache memoryCache) : ITokenRev
             return Task.FromResult(false);
         }
 
-        return Task.FromResult(memoryCache.TryGetValue(GetCacheKey(accessToken), out _));
+        return revokedTokenRepository.IsRevokedAsync(GetTokenHash(accessToken), cancellationToken);
     }
 
-    private static string GetCacheKey(string accessToken)
+    private static string GetTokenHash(string accessToken)
     {
         var hash = SHA256.HashData(Encoding.UTF8.GetBytes(accessToken));
-        return $"{CachePrefix}{Convert.ToBase64String(hash)}";
+        return Convert.ToHexString(hash);
     }
 
-    private static TimeSpan GetRemainingLifetime(string accessToken)
+    private static DateTimeOffset? TryGetExpiresAt(string accessToken)
     {
-        var jwt = new System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler().ReadJwtToken(accessToken);
-        return jwt.ValidTo - DateTime.UtcNow;
+        try
+        {
+            var jwt = new JwtSecurityTokenHandler().ReadJwtToken(accessToken);
+            return jwt.ValidTo;
+        }
+        catch (ArgumentException)
+        {
+            return null;
+        }
     }
 }

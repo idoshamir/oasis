@@ -22,7 +22,14 @@ public sealed class AuthService(
         }
 
         var user = await userRepository.GetByUsernameAsync(username, cancellationToken);
-        if (user is null || !passwordHasher.VerifyPassword(password, user.PasswordHash, user.Salt))
+        if (user is null)
+        {
+            passwordHasher.RunConstantTimeVerification(password);
+            logger.LogWarning("Failed login attempt for user {Username}", username);
+            return null;
+        }
+
+        if (!passwordHasher.VerifyPassword(password, user.PasswordHash, user.Salt))
         {
             logger.LogWarning("Failed login attempt for user {Username}", username);
             return null;

@@ -14,6 +14,7 @@ using JiraIntegration.Server.Models.Common;
 using JiraIntegration.Server.Pipeline;
 using JiraIntegration.Server.Validators;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -22,22 +23,35 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptions.SectionName));
 builder.Services.Configure<AtlassianOptions>(builder.Configuration.GetSection(AtlassianOptions.SectionName));
+builder.Services.Configure<AppDataProtectionOptions>(builder.Configuration.GetSection(AppDataProtectionOptions.SectionName));
 
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseSqlite(builder.Configuration.GetConnectionString("Default")));
 
 builder.Services.AddMemoryCache();
-builder.Services.AddDataProtection();
+
+var dataProtectionOptions = builder.Configuration
+    .GetSection(AppDataProtectionOptions.SectionName)
+    .Get<AppDataProtectionOptions>() ?? new AppDataProtectionOptions();
+var dataProtectionKeysDirectory = Path.IsPathRooted(dataProtectionOptions.KeysPath)
+    ? new DirectoryInfo(dataProtectionOptions.KeysPath)
+    : new DirectoryInfo(Path.Combine(builder.Environment.ContentRootPath, dataProtectionOptions.KeysPath));
+Directory.CreateDirectory(dataProtectionKeysDirectory.FullName);
+
+builder.Services.AddDataProtection()
+    .PersistKeysToFileSystem(dataProtectionKeysDirectory)
+    .SetApplicationName("JiraIntegration.Server");
 
 builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<IJiraConnectionRepository, JiraConnectionRepository>();
 builder.Services.AddScoped<IApiKeyRepository, ApiKeyRepository>();
 builder.Services.AddScoped<IApiKeyService, ApiKeyService>();
 builder.Services.AddScoped<INhiTicketLedgerRepository, NhiTicketLedgerRepository>();
+builder.Services.AddScoped<IRevokedTokenRepository, RevokedTokenRepository>();
 builder.Services.AddScoped<IPasswordHasher, PasswordHasher>();
 builder.Services.AddScoped<ITokenEncryptionService, TokenEncryptionService>();
 builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
-builder.Services.AddSingleton<ITokenRevocationService, TokenRevocationService>();
+builder.Services.AddScoped<ITokenRevocationService, TokenRevocationService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IJiraOAuthService, JiraOAuthService>();
 builder.Services.AddScoped<IJiraTicketService, JiraTicketService>();
@@ -126,9 +140,22 @@ builder.Services.AddRateLimiter(options =>
     {
         context.HttpContext.Response.ContentType = "application/json";
         await context.HttpContext.Response.WriteAsJsonAsync(
-            new ErrorResponse("Rate limit exceeded. Max 10 requests per minute.", "rate_limit_exceeded"),
+            new ErrorResponse("Rate limit exceeded. Please try again later.", "rate_limit_exceeded"),
             token);
     };
+
+    options.AddPolicy("Login", httpContext =>
+    {
+        var ip = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        return RateLimitPartition.GetFixedWindowLimiter(
+            $"login:{ip}",
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 10,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0
+            });
+    });
 
     options.AddPolicy("ExternalApi", httpContext =>
     {

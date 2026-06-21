@@ -3,5 +3,6 @@ obj/
 oasis.db
 oasis.db-shm
 oasis.db-wal
+data-protection-keys/
 *.user
 *.suo
