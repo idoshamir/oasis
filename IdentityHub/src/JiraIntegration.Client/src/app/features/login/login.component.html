@@ -1,0 +1,53 @@
+<main class="login-page">
+  <section class="login-card">
+    <header class="login-card__header">
+      <h1>IdentityHub</h1>
+      <p>Sign in to manage Non-Human Identity findings</p>
+    </header>
+
+    <form class="login-form" [formGroup]="form" (ngSubmit)="submit()">
+      <div class="form-field">
+        <label for="username">Username</label>
+        <input
+          id="username"
+          type="text"
+          formControlName="username"
+          autocomplete="username"
+          [disabled]="isSubmitting()"
+        />
+        @if (form.controls.username.touched && form.controls.username.hasError('required')) {
+          <span class="form-field__error">Username is required.</span>
+        }
+      </div>
+
+      <div class="form-field">
+        <label for="password">Password</label>
+        <input
+          id="password"
+          type="password"
+          formControlName="password"
+          autocomplete="current-password"
+          [disabled]="isSubmitting()"
+        />
+        @if (form.controls.password.touched && form.controls.password.hasError('required')) {
+          <span class="form-field__error">Password is required.</span>
+        }
+      </div>
+
+      @if (errorMessage(); as message) {
+        <div class="login-form__alert" role="alert" aria-live="polite">
+          <strong class="login-form__alert-title">Sign in failed</strong>
+          <p class="login-form__alert-message">{{ message }}</p>
+        </div>
+      }
+
+      <button class="login-form__submit" type="submit" [disabled]="isSubmitting()">
+        @if (isSubmitting()) {
+          Signing in...
+        } @else {
+          Sign in
+        }
+      </button>
+    </form>
+  </section>
+</main>

@@ -1,0 +1,62 @@
+<div class="project-api-key">
+  <label for="projectApiKey">API Key</label>
+
+  @if (isLoading()) {
+    <p class="project-api-key__hint">Loading API key...</p>
+  } @else if (hasKey) {
+    @if (plaintextKey()) {
+      <p class="project-api-key__warning">
+        This is the only time we can show you this key. Copy it now.
+      </p>
+    } @else {
+      <p class="project-api-key__hint">
+        Full key is hidden. Regenerate to create a new key you can copy.
+      </p>
+    }
+
+    <div class="project-api-key__row">
+      <input
+        id="projectApiKey"
+        class="project-api-key__input"
+        type="password"
+        [value]="plaintextKey() ?? existingKey()?.maskedKey ?? ''"
+        readonly
+      />
+      <button
+        class="project-api-key__copy"
+        type="button"
+        [disabled]="!canCopy || isSubmitting()"
+        (click)="copyKey()"
+      >
+        Copy
+      </button>
+      <button
+        class="project-api-key__regenerate"
+        type="button"
+        [disabled]="isSubmitting()"
+        (click)="regenerateKey()"
+      >
+        @if (isSubmitting()) {
+          Regenerating...
+        } @else {
+          Regenerate
+        }
+      </button>
+    </div>
+  } @else {
+    <div class="project-api-key__row">
+      <button
+        class="project-api-key__generate"
+        type="button"
+        [disabled]="isSubmitting()"
+        (click)="generateKey()"
+      >
+        @if (isSubmitting()) {
+          Generating...
+        } @else {
+          Generate API Key
+        }
+      </button>
+    </div>
+  }
+</div>

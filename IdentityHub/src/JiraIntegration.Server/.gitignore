@@ -1,0 +1,7 @@
+bin/
+obj/
+oasis.db
+oasis.db-shm
+oasis.db-wal
+*.user
+*.suo

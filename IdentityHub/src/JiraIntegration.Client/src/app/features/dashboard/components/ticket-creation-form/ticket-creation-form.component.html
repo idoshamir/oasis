@@ -1,0 +1,45 @@
+<section class="panel">
+  <h2>Create NHI Finding Ticket</h2>
+  <p class="panel__description">
+    Submit a finding to create a Jira task in
+    <strong>{{ projectSelection.selectedProject()?.name }}</strong>.
+  </p>
+
+  @if (isSuccess()) {
+    <div class="ticket-form__success" role="status" aria-live="polite">
+      Ticket created successfully.
+    </div>
+  }
+
+  <form class="ticket-form" [formGroup]="form" (ngSubmit)="submit()">
+    <div class="form-field">
+      <label for="title">Title</label>
+      <input id="title" type="text" formControlName="title" [disabled]="isSubmitting()" />
+      @if (form.controls.title.touched && form.controls.title.hasError('required')) {
+        <span class="form-field__error">Title is required.</span>
+      }
+    </div>
+
+    <div class="form-field">
+      <label for="description">Description</label>
+      <textarea
+        id="description"
+        rows="4"
+        formControlName="description"
+        [disabled]="isSubmitting()"
+      ></textarea>
+      @if (form.controls.description.touched && form.controls.description.hasError('required')) {
+        <span class="form-field__error">Description is required.</span>
+      }
+    </div>
+
+    <button class="ticket-form__submit" type="submit" [disabled]="!canSubmit() || form.invalid">
+      @if (isSubmitting()) {
+        <span class="ticket-form__spinner" aria-hidden="true"></span>
+        Creating...
+      } @else {
+        Create Ticket
+      }
+    </button>
+  </form>
+</section>

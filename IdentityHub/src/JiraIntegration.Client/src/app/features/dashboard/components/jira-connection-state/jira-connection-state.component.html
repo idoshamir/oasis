@@ -1,0 +1,37 @@
+<section class="panel">
+  <div class="panel__heading">
+    <h2>Jira Connection</h2>
+    @if (jiraConnectionService.statusKnown() && jiraConnectionService.isConnected()) {
+      <span class="panel__badge panel__badge--connected">Connected</span>
+    }
+  </div>
+
+  @if (!jiraConnectionService.statusKnown() || jiraConnectionService.isLoading()) {
+    <p class="panel__description">Checking Jira connection...</p>
+  } @else if (jiraConnectionService.isConnected()) {
+    <p class="panel__status panel__status--connected">
+      <strong>Workspace Connected:</strong> Ready to create findings.
+    </p>
+    @if (jiraConnectionService.status()?.workspaceName) {
+      <p class="panel__description">
+        Linked workspace: <strong>{{ jiraConnectionService.status()?.workspaceName }}</strong>
+      </p>
+    }
+  } @else {
+    <p class="panel__description">
+      Connect your Jira workspace to create tickets from NHI findings.
+    </p>
+    <button
+      class="panel__action panel__action--primary"
+      type="button"
+      [disabled]="jiraConnectionService.isConnecting()"
+      (click)="connect()"
+    >
+      @if (jiraConnectionService.isConnecting()) {
+        Redirecting to Atlassian...
+      } @else {
+        Connect to Jira
+      }
+    </button>
+  }
+</section>

@@ -1,0 +1,30 @@
+<section class="panel">
+  <h2>Project</h2>
+  <p class="panel__description">Select a Jira project to create tickets and view recent issues.</p>
+
+  @if (projectSelection.isLoading()) {
+    <p class="form-field__hint">Loading projects...</p>
+  } @else if (projectSelection.loadFailed()) {
+    <p class="form-field__error">Unable to load Jira projects. Refresh the page and try again.</p>
+  } @else if (!projectSelection.hasProjects()) {
+    <p class="form-field__error">No Jira projects available for issue creation.</p>
+  } @else {
+    <div class="form-field">
+      <label for="projectKey">Project</label>
+      <select
+        id="projectKey"
+        [ngModel]="projectSelection.selectedProjectKey() ?? ''"
+        (ngModelChange)="onProjectKeyChange($event)"
+      >
+        <option value="" disabled>Select a project</option>
+        @for (project of projectSelection.projects(); track project.key) {
+          <option [value]="project.key">{{ project.name }} ({{ project.key }})</option>
+        }
+      </select>
+    </div>
+
+    @if (projectSelection.hasSelection()) {
+      <app-project-api-key />
+    }
+  }
+</section>

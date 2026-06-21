@@ -1,0 +1,50 @@
+[tool.ruff]
+target-version = "py311"
+line-length = 88
+exclude = [
+  "audio_downloads",
+  "__pycache__",
+]
+
+[tool.ruff.lint]
+select = [
+    "E", "W",  # pycodestyle (standard PEP 8 formatting and styling)
+    "F",       # Pyflakes (catches unused imports, undefined variables)
+    "I",       # isort (automatically sorts and groups imports)
+    "UP",      # pyupgrade (automatically modernizes older Python syntax)
+    "B",       # flake8-bugbear (catches common bugs and design flaws)
+    "SIM",     # flake8-simplify (suggests code simplifications)
+    "S",       # flake8-bandit (automated security testing for vulnerabilities)
+]
+
+[tool.ruff.format]
+# Enforce double quotes for strings (standard Python convention)
+quote-style = "double"
+
+ignore = [
+  "ANN401",
+  "E501",
+  "D100",
+  "D101",
+  "D102",
+  "D103",
+  "D105",
+  "D104",
+  "D205",
+  "D415",
+  "D107",
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+"compare_finbert.py" = ["ANN201", "ANN001", "ANN002", "ANN003"]
+"compare_gemini_lite.py" = ["ANN201", "ANN001", "ANN002", "ANN003"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+ignore_missing_imports = true
+exclude = "(audio_downloads|__pycache__)"
+

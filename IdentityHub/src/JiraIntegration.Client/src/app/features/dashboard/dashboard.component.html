@@ -1,0 +1,38 @@
+<div class="dashboard">
+
+  <header class="dashboard__nav">
+
+    <div class="dashboard__brand">
+
+      <h1>IdentityHub</h1>
+
+      @if (currentUser$ | async; as user) {
+
+        <span class="dashboard__user">Signed in as {{ user.username }}</span>
+
+      }
+
+    </div>
+
+    <button class="dashboard__logout" type="button" (click)="logout()">Logout</button>
+
+  </header>
+
+
+
+  <main class="dashboard__content">
+
+    <app-jira-connection-state />
+
+    @if (jiraConnectionService.statusKnown() && jiraConnectionService.isConnected()) {
+      <app-project-selection />
+
+      @if (projectSelection.isSelectionReady()) {
+        <app-ticket-creation-form />
+        <app-recent-tickets-list />
+      }
+    }
+
+  </main>
+
+</div>

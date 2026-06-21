@@ -1,0 +1,113 @@
+.panel {
+  padding: var(--space-lg);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+
+  h2 {
+    margin: 0 0 var(--space-xs);
+    font-size: 1.125rem;
+    font-weight: 600;
+  }
+}
+
+.panel__description,
+.panel__empty {
+  margin: 0 0 var(--space-md);
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+}
+
+.ticket-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+
+.ticket-list__item {
+  margin: 0;
+}
+
+.ticket-list__card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+  padding: var(--space-sm) var(--space-md);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-background);
+  text-decoration: none;
+  color: inherit;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    box-shadow 0.15s ease,
+    border-color 0.15s ease;
+
+  &:hover {
+    background: var(--color-surface);
+    border-color: rgba(37, 99, 235, 0.25);
+    box-shadow: var(--shadow-sm);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+  }
+
+  &--static {
+    cursor: default;
+
+    &:hover {
+      background: var(--color-background);
+      border-color: var(--color-border);
+      box-shadow: none;
+    }
+  }
+}
+
+.ticket-list__content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  min-width: 0;
+}
+
+.ticket-list__key {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--color-primary);
+  font-family: var(--font-mono, ui-monospace, monospace);
+}
+
+.ticket-list__title {
+  font-size: 0.9375rem;
+  font-weight: 500;
+  color: var(--color-text);
+}
+
+.ticket-list__time {
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+}
+
+.ticket-list__icon {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: var(--radius-sm);
+  color: var(--color-primary);
+
+  svg {
+    width: 1.125rem;
+    height: 1.125rem;
+    fill: currentColor;
+  }
+}

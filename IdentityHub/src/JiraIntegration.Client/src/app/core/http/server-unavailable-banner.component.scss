@@ -1,0 +1,15 @@
+.server-banner {
+  padding: var(--space-md) var(--space-lg);
+  border-bottom: 1px solid #fecaca;
+  background: #fef2f2;
+}
+
+.server-banner__message {
+  margin: 0;
+  max-width: 72rem;
+  margin-inline: auto;
+  font-size: 0.875rem;
+  line-height: 1.4;
+  color: var(--color-danger);
+  text-align: center;
+}

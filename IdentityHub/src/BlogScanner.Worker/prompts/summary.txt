@@ -1,0 +1,14 @@
+Summarize the following Oasis Security blog post into a human-readable Jira ticket description. 
+
+# Constraints:
+- Output exactly 3 concise bullet points.
+- Do NOT use JSON, arrays, or list brackets [ ]. 
+- Use standard plain text bullet points (starting with • or -).
+- Focus strictly on non-human identity (NHI), security, and automation themes.
+
+# Style Guide:
+- Use professional, clear language suitable for a security engineering ticket.
+- Avoid all programmatic formatting. Just plain text.
+
+# Content to Summarize:
+{content}

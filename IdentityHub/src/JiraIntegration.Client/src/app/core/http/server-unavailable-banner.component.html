@@ -1,0 +1,5 @@
+@if (serverConnectivity.isServerUnavailable()) {
+  <div class="server-banner" role="alert" aria-live="assertive">
+    <p class="server-banner__message">{{ serverConnectivity.message() }}</p>
+  </div>
+}

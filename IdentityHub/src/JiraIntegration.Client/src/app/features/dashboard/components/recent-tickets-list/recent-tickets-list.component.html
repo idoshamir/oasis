@@ -1,0 +1,50 @@
+<section class="panel">
+  <h2>Recent Tickets</h2>
+  <p class="panel__description">
+    Tickets created from this app in
+    <strong>{{ projectSelection.selectedProject()?.name }}</strong>.
+  </p>
+
+  @if (isLoading()) {
+    <p class="panel__empty">Loading tickets...</p>
+  } @else if (tickets().length === 0) {
+    <p class="panel__empty">No tickets yet.</p>
+  } @else {
+    <ul class="ticket-list">
+      @for (ticket of tickets(); track ticket.issueKey) {
+        <li class="ticket-list__item">
+          @if (ticket.externalUrl) {
+            <a
+              class="ticket-list__card"
+              [href]="ticket.externalUrl"
+              target="_blank"
+              rel="noopener noreferrer"
+              [attr.aria-label]="'Open ' + ticket.issueKey + ' in Jira'"
+            >
+              <div class="ticket-list__content">
+                <span class="ticket-list__key">{{ ticket.issueKey }}</span>
+                <span class="ticket-list__title">{{ ticket.title }}</span>
+                <time class="ticket-list__time">{{ ticket.createdAt | date: 'medium' }}</time>
+              </div>
+              <span class="ticket-list__icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" focusable="false">
+                  <path
+                    d="M14 3h7v7h-2V6.41l-9.29 9.3-1.42-1.42 9.3-9.29H14V3zM5 5h6v2H7v10h10v-4h2v6H5V5z"
+                  />
+                </svg>
+              </span>
+            </a>
+          } @else {
+            <div class="ticket-list__card ticket-list__card--static">
+              <div class="ticket-list__content">
+                <span class="ticket-list__key">{{ ticket.issueKey }}</span>
+                <span class="ticket-list__title">{{ ticket.title }}</span>
+                <time class="ticket-list__time">{{ ticket.createdAt | date: 'medium' }}</time>
+              </div>
+            </div>
+          }
+        </li>
+      }
+    </ul>
+  }
+</section>
