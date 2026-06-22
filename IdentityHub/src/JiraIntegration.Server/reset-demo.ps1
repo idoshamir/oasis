@@ -1,4 +1,4 @@
-# Resets oasis.db to a clean demo state using demo.sql and Identity seeding.
+# Resets oasis.db to a clean demo state using reset-db.sql and Identity seeding.
 # Creates schema if missing, wipes data, then seeds demo users via UserManager.
 #
 # Usage (from this directory):
@@ -11,11 +11,11 @@ $ErrorActionPreference = 'Stop'
 
 $projectDir = $PSScriptRoot
 $dbPath = Join-Path $projectDir 'oasis.db'
-$sqlPath = Join-Path $projectDir 'demo.sql'
+$sqlPath = Join-Path $projectDir 'reset-db.sql'
 $runnerDir = Join-Path $env:TEMP 'oasis-demo-sql-runner'
 
 if (-not (Test-Path $sqlPath)) {
-    Write-Error "demo.sql not found at $sqlPath"
+    Write-Error "reset-db.sql not found at $sqlPath"
 }
 
 function Ensure-SqlRunner {
@@ -98,11 +98,11 @@ try {
         throw 'dotnet ef database update failed. Install the tool with: dotnet tool install --global dotnet-ef'
     }
 
-    Write-Host 'Applying demo.sql...'
+    Write-Host 'Applying reset-db.sql...'
     Ensure-SqlRunner
     dotnet (Join-Path $runnerDir 'bin\Debug\net9.0\ApplySql.dll') $dbPath $sqlPath
     if ($LASTEXITCODE -ne 0) {
-        throw 'Failed to apply demo.sql.'
+        throw 'Failed to apply reset-db.sql.'
     }
 
     Write-Host 'Seeding demo users (Identity)...'
