@@ -75,8 +75,6 @@ namespace JiraIntegration.Server.Migrations
                 columns: table => new
                 {
                     Id = table.Column<string>(type: "TEXT", nullable: false, collation: "NOCASE"),
-                    LegacySalt = table.Column<string>(type: "TEXT", maxLength: 128, nullable: true),
-                    LegacyPasswordHash = table.Column<string>(type: "TEXT", maxLength: 512, nullable: true),
                     UserName = table.Column<string>(type: "TEXT", maxLength: 128, nullable: false),
                     NormalizedUserName = table.Column<string>(type: "TEXT", maxLength: 256, nullable: true),
                     Email = table.Column<string>(type: "TEXT", maxLength: 256, nullable: true),

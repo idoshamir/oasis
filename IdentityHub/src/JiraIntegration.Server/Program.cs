@@ -143,6 +143,8 @@ builder.Services.AddSingleton<IOAuthStateStore, OAuthStateProtector>();
 builder.Services.AddScoped<ITicketCreationPipeline, TicketCreationPipeline>();
 builder.Services.AddScoped<IJiraOAuthPipeline, JiraOAuthPipeline>();
 builder.Services.AddScoped<DbSeeder>();
+builder.Services.AddScoped<DemoUserSeeder>();
+builder.Services.AddScoped<OpenIddictClientBootstrap>();
 builder.Services.AddHostedService<DatabaseInitializer>();
 builder.Services.AddHostedService<OpenIddictSeeder>();
 
@@ -257,5 +259,16 @@ app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
+
+if (args.Contains("--seed-demo", StringComparer.OrdinalIgnoreCase))
+{
+    await using var scope = app.Services.CreateAsyncScope();
+    var bootstrap = scope.ServiceProvider.GetRequiredService<OpenIddictClientBootstrap>();
+    await bootstrap.EnsureRegisteredAsync();
+
+    var demoSeeder = scope.ServiceProvider.GetRequiredService<DemoUserSeeder>();
+    await demoSeeder.SeedAsync();
+    return;
+}
 
 app.Run();

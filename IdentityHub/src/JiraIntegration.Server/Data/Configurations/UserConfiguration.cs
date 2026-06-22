@@ -10,8 +10,6 @@ public sealed class UserConfiguration : IEntityTypeConfiguration<User>
     {
         builder.ToTable("Users");
         builder.Property(u => u.UserName).HasMaxLength(128).IsRequired();
-        builder.Property(u => u.LegacySalt).HasMaxLength(128);
-        builder.Property(u => u.LegacyPasswordHash).HasMaxLength(512);
         builder.HasIndex(u => u.NormalizedUserName).IsUnique();
     }
 }

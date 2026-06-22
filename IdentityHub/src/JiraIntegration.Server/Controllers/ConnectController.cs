@@ -1,6 +1,5 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
-using JiraIntegration.Server.Auth;
 using JiraIntegration.Server.Data.Entities;
 using Microsoft.AspNetCore;
 using Microsoft.AspNetCore.Authentication;
@@ -63,18 +62,11 @@ public sealed class ConnectController(
         var password = request.Password;
         if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(password))
         {
-            LegacyPasswordVerifier.RunConstantTimeVerification(password ?? string.Empty);
             return InvalidGrant("Invalid username or password.");
         }
 
         var user = await userManager.FindByNameAsync(username);
-        if (user is null)
-        {
-            LegacyPasswordVerifier.RunConstantTimeVerification(password);
-            return InvalidGrant("Invalid username or password.");
-        }
-
-        if (!await ValidatePasswordAsync(user, password))
+        if (user is null || !await userManager.CheckPasswordAsync(user, password))
         {
             return InvalidGrant("Invalid username or password.");
         }
@@ -102,36 +94,6 @@ public sealed class ConnectController(
         }
 
         return await applicationManager.ValidateClientSecretAsync(application, request.ClientSecret, cancellationToken);
-    }
-
-    private async Task<bool> ValidatePasswordAsync(User user, string password)
-    {
-        if (LegacyPasswordVerifier.HasLegacyCredentials(user.LegacySalt, user.LegacyPasswordHash))
-        {
-            if (!LegacyPasswordVerifier.Verify(password, user.LegacyPasswordHash!, user.LegacySalt!))
-            {
-                return false;
-            }
-
-            var resetResult = await userManager.RemovePasswordAsync(user);
-            if (!resetResult.Succeeded)
-            {
-                return false;
-            }
-
-            var addResult = await userManager.AddPasswordAsync(user, password);
-            if (!addResult.Succeeded)
-            {
-                return false;
-            }
-
-            user.LegacySalt = null;
-            user.LegacyPasswordHash = null;
-            await userManager.UpdateAsync(user);
-            return true;
-        }
-
-        return await userManager.CheckPasswordAsync(user, password);
     }
 
     private async Task<ClaimsPrincipal> CreatePrincipalAsync(User user, CancellationToken cancellationToken)

@@ -1,5 +1,5 @@
-# Resets oasis.db to a clean demo state using demo.sql.
-# Creates schema if missing, then wipes data and inserts user: demo / Demo123!
+# Resets oasis.db to a clean demo state using demo.sql and Identity seeding.
+# Creates schema if missing, wipes data, then seeds demo users via UserManager.
 #
 # Usage (from this directory):
 #   .\reset-demo.ps1
@@ -103,6 +103,12 @@ try {
     dotnet (Join-Path $runnerDir 'bin\Debug\net9.0\ApplySql.dll') $dbPath $sqlPath
     if ($LASTEXITCODE -ne 0) {
         throw 'Failed to apply demo.sql.'
+    }
+
+    Write-Host 'Seeding demo users (Identity)...'
+    dotnet run --no-build -- --seed-demo
+    if ($LASTEXITCODE -ne 0) {
+        throw 'Failed to seed demo users.'
     }
 
     Write-Host ''

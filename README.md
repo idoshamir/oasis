@@ -112,7 +112,7 @@ Make sure the API isn't running, then from `IdentityHub/src/JiraIntegration.Serv
 
 Requires the EF Core CLI tools: `dotnet tool install --global dotnet-ef`.
 
-This creates `oasis.db` and seeds two isolated demo accounts:
+This creates `oasis.db`, wipes prior data, and seeds two isolated demo accounts with ASP.NET Core Identity password hashes:
 
 | Username | Password |
 |---|---|
