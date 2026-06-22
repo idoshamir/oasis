@@ -11,8 +11,8 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace JiraIntegration.Server.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260622030926_MigrateToOpenIddictIdentity")]
-    partial class MigrateToOpenIddictIdentity
+    [Migration("20260622033152_InitialCreate")]
+    partial class InitialCreate
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)

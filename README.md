@@ -90,7 +90,13 @@ From `IdentityHub/src/JiraIntegration.Server`, store secrets outside the project
 dotnet user-secrets set "Jwt:Secret" "DevOnlySecretKey_ChangeInProduction_Min32Chars!"
 ```
 
-**Atlassian OAuth credentials** — create an OAuth 2.0 (3LO) app with callback URL `http://localhost:5282/api/jira/callback` and scopes `read:jira-work`, `read:jira-user`, `write:jira-work`:
+**Atlassian OAuth credentials** — create an [OAuth 2.0 (3LO) app](https://developer.atlassian.com/console/myapps) in the Atlassian developer console, then:
+
+1. Under **Authorization -> Add**, set the callback URL to `http://localhost:5282/api/jira/callback` (use your API server host and port).
+2. Under **Jira API**, add scopes: `read:jira-work`, `read:jira-user`, `write:jira-work`.
+3. Copy the **Client ID** and **Client Secret** from the app.
+
+Then store them as user secrets:
 ```bash
 dotnet user-secrets set "Atlassian:ClientId" "<your-atlassian-client-id>"
 dotnet user-secrets set "Atlassian:ClientSecret" "<your-atlassian-client-secret>"
