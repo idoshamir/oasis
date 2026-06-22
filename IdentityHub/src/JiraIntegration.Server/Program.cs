@@ -1,25 +1,27 @@
-using System.IdentityModel.Tokens.Jwt;
-using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading.RateLimiting;
+using AspNetCore.Authentication.ApiKey;
 using FluentValidation;
 using FluentValidation.AspNetCore;
 using JiraIntegration.Server;
 using JiraIntegration.Server.Auth;
 using JiraIntegration.Server.Configuration;
 using JiraIntegration.Server.Data;
+using JiraIntegration.Server.Data.Entities;
 using JiraIntegration.Server.Implementations;
+using JiraIntegration.Server.Implementations.Atlassian;
 using JiraIntegration.Server.Interfaces;
 using JiraIntegration.Server.Middleware;
 using JiraIntegration.Server.Models.Common;
 using JiraIntegration.Server.Pipeline;
 using JiraIntegration.Server.Validators;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using OpenIddict.Validation.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -32,8 +34,6 @@ builder.Services.AddScoped<ICurrentUserAccessor, CurrentUserAccessor>();
 
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseSqlite(builder.Configuration.GetConnectionString("Default")));
-
-builder.Services.AddMemoryCache();
 
 var dataProtectionOptions = builder.Configuration
     .GetSection(AppDataProtectionOptions.SectionName)
@@ -52,36 +52,6 @@ if (OperatingSystem.IsWindows())
     dataProtectionBuilder.ProtectKeysWithDpapi();
 }
 
-builder.Services.AddScoped<IUserRepository, UserRepository>();
-builder.Services.AddScoped<IJiraConnectionRepository, JiraConnectionRepository>();
-builder.Services.AddScoped<IJiraConnectionValidator, JiraConnectionValidator>();
-builder.Services.AddScoped<IApiKeyRepository, ApiKeyRepository>();
-builder.Services.AddScoped<IApiKeyService, ApiKeyService>();
-builder.Services.AddScoped<INhiTicketLedgerRepository, NhiTicketLedgerRepository>();
-builder.Services.AddScoped<IRevokedTokenRepository, RevokedTokenRepository>();
-builder.Services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
-builder.Services.AddScoped<IPasswordHasher, PasswordHasher>();
-builder.Services.AddScoped<ITokenEncryptionService, TokenEncryptionService>();
-builder.Services.AddScoped<IJwtTokenService, JwtTokenService>();
-builder.Services.AddScoped<IRefreshTokenService, RefreshTokenService>();
-builder.Services.AddScoped<ITokenRevocationService, TokenRevocationService>();
-builder.Services.AddScoped<IAuthService, AuthService>();
-builder.Services.AddScoped<IJiraOAuthService, JiraOAuthService>();
-builder.Services.AddScoped<IJiraTicketService, JiraTicketService>();
-builder.Services.AddSingleton<IJiraTokenRefreshService, JiraTokenRefreshService>();
-builder.Services.AddSingleton<IOAuthStateStore, OAuthStateStore>();
-builder.Services.AddScoped<ITicketCreationPipeline, TicketCreationPipeline>();
-builder.Services.AddScoped<IJiraOAuthPipeline, JiraOAuthPipeline>();
-builder.Services.AddScoped<DbSeeder>();
-builder.Services.AddHostedService<DatabaseInitializer>();
-
-var atlassianOptions = builder.Configuration.GetSection(AtlassianOptions.SectionName).Get<AtlassianOptions>()
-    ?? new AtlassianOptions();
-builder.Services.AddHttpClient("Atlassian", client =>
-{
-    client.Timeout = TimeSpan.FromSeconds(atlassianOptions.HttpTimeoutSeconds);
-});
-
 var jwtOptions = builder.Configuration.GetSection(JwtOptions.SectionName).Get<JwtOptions>()
     ?? throw new InvalidOperationException("Jwt configuration is required.");
 
@@ -93,74 +63,109 @@ if (!jwtOptions.IsConfigured())
         "In production, set the Jwt__Secret environment variable.");
 }
 
+builder.Services.Configure<OpenIddictClientOptions>(options =>
+{
+    var configured = builder.Configuration.GetSection(OpenIddictClientOptions.SectionName).Get<OpenIddictClientOptions>()
+        ?? new OpenIddictClientOptions();
+    options.ClientId = string.IsNullOrWhiteSpace(configured.ClientId)
+        ? "jira-integration"
+        : configured.ClientId;
+    options.ClientSecret = string.IsNullOrWhiteSpace(configured.ClientSecret)
+        ? jwtOptions.Secret
+        : configured.ClientSecret;
+});
+
+var signingKeyMaterial = SHA256.HashData(Encoding.UTF8.GetBytes(jwtOptions.Secret));
+var encryptionKey = new SymmetricSecurityKey(signingKeyMaterial);
+var tokenIssuer = Uri.TryCreate(jwtOptions.Issuer, UriKind.Absolute, out var issuerUri)
+    ? issuerUri
+    : new Uri("http://localhost/");
+
+builder.Services
+    .AddIdentity<User, IdentityRole<Guid>>(options =>
+    {
+        options.User.RequireUniqueEmail = false;
+        options.Password.RequireDigit = false;
+        options.Password.RequireLowercase = false;
+        options.Password.RequireUppercase = false;
+        options.Password.RequireNonAlphanumeric = false;
+        options.Password.RequiredLength = 1;
+    })
+    .AddEntityFrameworkStores<AppDbContext>()
+    .AddDefaultTokenProviders();
+
+builder.Services.AddOpenIddict()
+    .AddCore(options =>
+    {
+        options.UseEntityFrameworkCore()
+            .UseDbContext<AppDbContext>();
+    })
+    .AddServer(options =>
+    {
+        options.SetTokenEndpointUris("/connect/token");
+        options.SetIssuer(tokenIssuer);
+        options.AllowPasswordFlow()
+            .AllowRefreshTokenFlow();
+        options.SetAccessTokenLifetime(TimeSpan.FromMinutes(jwtOptions.ExpiryMinutes));
+        options.SetRefreshTokenLifetime(TimeSpan.FromDays(jwtOptions.RefreshTokenExpiryDays));
+        options.AddDevelopmentSigningCertificate()
+            .AddDevelopmentEncryptionCertificate();
+        options.AddEncryptionKey(encryptionKey);
+        options.DisableAccessTokenEncryption();
+        options.UseAspNetCore()
+            .EnableTokenEndpointPassthrough()
+            .DisableTransportSecurityRequirement();
+    })
+    .AddValidation(options =>
+    {
+        options.UseLocalServer();
+        options.UseAspNetCore();
+        options.AddEncryptionKey(encryptionKey);
+    });
+
+builder.Services.AddScoped<IUserRepository, UserRepository>();
+builder.Services.AddScoped<IJiraConnectionRepository, JiraConnectionRepository>();
+builder.Services.AddScoped<IJiraConnectionValidator, JiraConnectionValidator>();
+builder.Services.AddScoped<IApiKeyRepository, ApiKeyRepository>();
+builder.Services.AddScoped<IApiKeyService, ApiKeyService>();
+builder.Services.AddScoped<INhiTicketLedgerRepository, NhiTicketLedgerRepository>();
+builder.Services.AddScoped<IApiKeyHasher, ApiKeyHasher>();
+builder.Services.AddScoped<ITokenEncryptionService, TokenEncryptionService>();
+builder.Services.AddScoped<IAuthService, OpenIddictAuthService>();
+builder.Services.AddScoped<IJiraOAuthService, JiraOAuthService>();
+builder.Services.AddScoped<JiraCloudApiClient>();
+builder.Services.AddScoped<IJiraTicketService, JiraTicketService>();
+builder.Services.AddSingleton<IJiraTokenRefreshService, JiraTokenRefreshService>();
+builder.Services.AddSingleton<IOAuthStateStore, OAuthStateProtector>();
+builder.Services.AddScoped<ITicketCreationPipeline, TicketCreationPipeline>();
+builder.Services.AddScoped<IJiraOAuthPipeline, JiraOAuthPipeline>();
+builder.Services.AddScoped<DbSeeder>();
+builder.Services.AddHostedService<DatabaseInitializer>();
+builder.Services.AddHostedService<OpenIddictSeeder>();
+
+var atlassianOptions = builder.Configuration.GetSection(AtlassianOptions.SectionName).Get<AtlassianOptions>()
+    ?? new AtlassianOptions();
+builder.Services.AddHttpClient("Atlassian", client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(atlassianOptions.HttpTimeoutSeconds);
+});
+builder.Services.AddHttpClient("AtlassianOAuth", client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(atlassianOptions.HttpTimeoutSeconds);
+});
+builder.Services.AddHttpClient("OpenIddictInternal");
+
 builder.Services
     .AddAuthentication(options =>
     {
-        options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
-        options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+        options.DefaultAuthenticateScheme = OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme;
+        options.DefaultChallengeScheme = OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme;
     })
-    .AddJwtBearer(options =>
+    .AddApiKeyInHeader<ApiKeyProvider>(ApiKeyAuthenticationDefaults.AuthenticationScheme, options =>
     {
-        options.TokenValidationParameters = new TokenValidationParameters
-        {
-            ValidateIssuer = true,
-            ValidateAudience = true,
-            ValidateLifetime = true,
-            ValidateIssuerSigningKey = true,
-            ValidIssuer = jwtOptions.Issuer,
-            ValidAudience = jwtOptions.Audience,
-            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtOptions.Secret)),
-            ClockSkew = TimeSpan.FromMinutes(1)
-        };
-
-        options.Events = new JwtBearerEvents
-        {
-            OnTokenValidated = async context =>
-            {
-                var services = context.HttpContext.RequestServices;
-                var cancellationToken = context.HttpContext.RequestAborted;
-
-                var subject = context.Principal?.FindFirstValue(JwtRegisteredClaimNames.Sub)
-                    ?? context.Principal?.FindFirstValue(ClaimTypes.NameIdentifier);
-                if (!Guid.TryParse(subject, out var userId))
-                {
-                    context.Fail("Token is missing a valid user identifier.");
-                    return;
-                }
-
-                var userRepository = services.GetRequiredService<IUserRepository>();
-                var user = await userRepository.GetByIdAsync(userId, cancellationToken);
-                if (user is null)
-                {
-                    context.Fail("User no longer exists.");
-                    return;
-                }
-
-                if (!context.Request.Headers.TryGetValue("Authorization", out var headerValues))
-                {
-                    return;
-                }
-
-                var header = headerValues.ToString();
-                const string prefix = "Bearer ";
-                if (!header.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
-                {
-                    return;
-                }
-
-                var token = header[prefix.Length..].Trim();
-                var revocationService = services.GetRequiredService<ITokenRevocationService>();
-
-                if (await revocationService.IsRevokedAsync(token, cancellationToken))
-                {
-                    context.Fail("Token has been revoked.");
-                }
-            }
-        };
-    })
-    .AddScheme<Microsoft.AspNetCore.Authentication.AuthenticationSchemeOptions, ApiKeyAuthenticationHandler>(
-        ApiKeyAuthenticationDefaults.AuthenticationScheme,
-        _ => { });
+        options.KeyName = ApiKeyAuthenticationDefaults.HeaderName;
+        options.SuppressWWWAuthenticateHeader = true;
+    });
 
 builder.Services.AddAuthorization();
 

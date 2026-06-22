@@ -1,17 +1,17 @@
 using JiraIntegration.Server.Interfaces;
 using JiraIntegration.Server.Models.Common;
 using JiraIntegration.Server.Models.Jira;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
+using OpenIddict.Validation.AspNetCore;
 using JiraIntegration.Server.Configuration;
 
 namespace JiraIntegration.Server.Controllers;
 
 [ApiController]
 [Route("api/jira")]
-[Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
+[Authorize(AuthenticationSchemes = OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme)]
 public sealed class JiraAuthController(
     ICurrentUserAccessor currentUserAccessor,
     IOAuthStateStore oauthStateStore,

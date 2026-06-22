@@ -1,9 +1,10 @@
 using System.Net.Http.Headers;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using IdentityModel.Client;
 using JiraIntegration.Server.Configuration;
-using JiraIntegration.Server.Models.Jira;
 using JiraIntegration.Server.Interfaces;
+using JiraIntegration.Server.Models.Jira;
 using Microsoft.Extensions.Options;
 
 namespace JiraIntegration.Server.Implementations;
@@ -40,30 +41,31 @@ public sealed class JiraOAuthService(
 
     public async Task<AtlassianTokenResponse> ExchangeCodeAsync(string code, CancellationToken cancellationToken = default)
     {
-        var client = httpClientFactory.CreateClient("Atlassian");
-        using var content = new FormUrlEncodedContent(new Dictionary<string, string>
+        var client = httpClientFactory.CreateClient("AtlassianOAuth");
+        var response = await client.RequestAuthorizationCodeTokenAsync(new AuthorizationCodeTokenRequest
         {
-            ["grant_type"] = "authorization_code",
-            ["client_id"] = _options.ClientId,
-            ["client_secret"] = _options.ClientSecret,
-            ["code"] = code,
-            ["redirect_uri"] = _options.RedirectUri
-        });
+            Address = "https://auth.atlassian.com/oauth/token",
+            ClientId = _options.ClientId,
+            ClientSecret = _options.ClientSecret,
+            Code = code,
+            RedirectUri = _options.RedirectUri
+        }, cancellationToken);
 
-        using var response = await client.PostAsync("https://auth.atlassian.com/oauth/token", content, cancellationToken);
-        response.EnsureSuccessStatusCode();
+        if (response.IsError)
+        {
+            throw new InvalidOperationException(
+                $"Atlassian token exchange failed: {response.Error} {response.ErrorDescription}");
+        }
 
-        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
-        var tokenResponse = await JsonSerializer.DeserializeAsync<AtlassianTokenResponseDto>(stream, JsonOptions, cancellationToken);
-        if (tokenResponse is null || string.IsNullOrWhiteSpace(tokenResponse.AccessToken))
+        if (string.IsNullOrWhiteSpace(response.AccessToken))
         {
             throw new InvalidOperationException("Atlassian token exchange returned an empty response.");
         }
 
         return new AtlassianTokenResponse(
-            tokenResponse.AccessToken,
-            tokenResponse.RefreshToken ?? string.Empty,
-            tokenResponse.ExpiresIn);
+            response.AccessToken,
+            response.RefreshToken ?? string.Empty,
+            response.ExpiresIn);
     }
 
     public async Task<AtlassianTokenResponse> RefreshAccessTokenAsync(
@@ -75,32 +77,24 @@ public sealed class JiraOAuthService(
             throw new InvalidOperationException("Jira connection expired. Please reconnect Jira in the dashboard.");
         }
 
-        var client = httpClientFactory.CreateClient("Atlassian");
-        using var content = new FormUrlEncodedContent(new Dictionary<string, string>
+        var client = httpClientFactory.CreateClient("AtlassianOAuth");
+        var response = await client.RequestRefreshTokenAsync(new RefreshTokenRequest
         {
-            ["grant_type"] = "refresh_token",
-            ["client_id"] = _options.ClientId,
-            ["client_secret"] = _options.ClientSecret,
-            ["refresh_token"] = refreshToken
-        });
+            Address = "https://auth.atlassian.com/oauth/token",
+            ClientId = _options.ClientId,
+            ClientSecret = _options.ClientSecret,
+            RefreshToken = refreshToken
+        }, cancellationToken);
 
-        using var response = await client.PostAsync("https://auth.atlassian.com/oauth/token", content, cancellationToken);
-        if (!response.IsSuccessStatusCode)
-        {
-            throw new InvalidOperationException("Jira connection expired. Please reconnect Jira in the dashboard.");
-        }
-
-        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
-        var tokenResponse = await JsonSerializer.DeserializeAsync<AtlassianTokenResponseDto>(stream, JsonOptions, cancellationToken);
-        if (tokenResponse is null || string.IsNullOrWhiteSpace(tokenResponse.AccessToken))
+        if (response.IsError || string.IsNullOrWhiteSpace(response.AccessToken))
         {
             throw new InvalidOperationException("Jira connection expired. Please reconnect Jira in the dashboard.");
         }
 
         return new AtlassianTokenResponse(
-            tokenResponse.AccessToken,
-            tokenResponse.RefreshToken ?? refreshToken,
-            tokenResponse.ExpiresIn);
+            response.AccessToken,
+            response.RefreshToken ?? refreshToken,
+            response.ExpiresIn);
     }
 
     public async Task<AtlassianAccessibleResource> GetPrimaryAccessibleResourceAsync(
@@ -124,9 +118,4 @@ public sealed class JiraOAuthService(
 
         return resource;
     }
-
-    private sealed record AtlassianTokenResponseDto(
-        [property: JsonPropertyName("access_token")] string AccessToken,
-        [property: JsonPropertyName("refresh_token")] string? RefreshToken,
-        [property: JsonPropertyName("expires_in")] int ExpiresIn);
 }

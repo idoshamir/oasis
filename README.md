@@ -62,7 +62,7 @@ Sensitive configuration (JWT signing keys, Atlassian OAuth credentials) is kept 
 
 ### 4. Scope Assumptions
 - **Issue types:** ticket creation defaults to standard `Task` issues, for maximum compatibility across customized Jira tenants.
-- **Authentication:** a local salted/hashed auth system demonstrates secure session management without requiring the reviewer to stand up a third-party IdP. The UI relies on seeded demo users rather than self-service registration, to keep scope at MVP.
+- **Authentication:** user sign-in uses **OpenIddict** and **ASP.NET Core Identity** (JWT access tokens, HttpOnly refresh cookies, token revocation) so the PoC does not depend on a third-party IdP. The UI relies on seeded demo users rather than self-service registration, to keep scope at MVP.
 - **Jira workspaces:** each user may connect at most one Jira workspace — enough to demonstrate the OAuth flow and ticket-creation path without multi-tenant UI routing overhead.
 
 ### 5. Ticket History: Local Ledger over Jira JQL

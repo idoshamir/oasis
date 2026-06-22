@@ -11,27 +11,8 @@ public sealed class UserRepository(AppDbContext dbContext) : IUserRepository
         dbContext.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == id, cancellationToken);
 
     public Task<User?> GetByUsernameAsync(string username, CancellationToken cancellationToken = default) =>
-        dbContext.Users.FirstOrDefaultAsync(u => u.Username == username, cancellationToken);
+        dbContext.Users.FirstOrDefaultAsync(u => u.UserName == username, cancellationToken);
 
     public Task<bool> UsernameExistsAsync(string username, CancellationToken cancellationToken = default) =>
-        dbContext.Users.AsNoTracking().AnyAsync(u => u.Username == username, cancellationToken);
-
-    public async Task<User> CreateAsync(
-        string username,
-        string passwordHash,
-        string salt,
-        CancellationToken cancellationToken = default)
-    {
-        var user = new User
-        {
-            Id = Guid.NewGuid(),
-            Username = username,
-            PasswordHash = passwordHash,
-            Salt = salt
-        };
-
-        dbContext.Users.Add(user);
-        await dbContext.SaveChangesAsync(cancellationToken);
-        return user;
-    }
+        dbContext.Users.AsNoTracking().AnyAsync(u => u.UserName == username, cancellationToken);
 }

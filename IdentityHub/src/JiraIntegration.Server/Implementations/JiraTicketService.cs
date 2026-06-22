@@ -1,22 +1,11 @@
-using System.Net;
-using System.Net.Http.Headers;
-using System.Text;
-using System.Text.Json;
+using JiraIntegration.Server.Implementations.Atlassian;
 using JiraIntegration.Server.Interfaces;
-using JiraIntegration.Server.Models.Exceptions;
 using JiraIntegration.Server.Models.Jira;
 
 namespace JiraIntegration.Server.Implementations;
 
-public sealed class JiraTicketService(
-    IHttpClientFactory httpClientFactory) : IJiraTicketService
+public sealed class JiraTicketService(JiraCloudApiClient jiraCloudApiClient) : IJiraTicketService
 {
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        PropertyNameCaseInsensitive = true
-    };
-
     private static readonly string[] PreferredIssueTypeNames = ["Task", "Story", "Bug"];
 
     public async Task<JiraProjectTarget> ResolveProjectTargetAsync(
@@ -25,7 +14,12 @@ public sealed class JiraTicketService(
         string? preferredProjectKey = null,
         CancellationToken cancellationToken = default)
     {
-        var createMeta = await GetCreateMetaAsync(cloudId, accessToken, preferredProjectKey, cancellationToken);
+        var createMeta = await jiraCloudApiClient.GetCreateMetaAsync(
+            cloudId,
+            accessToken,
+            preferredProjectKey,
+            cancellationToken);
+
         if (createMeta.Projects.Count == 0)
         {
             throw new InvalidOperationException(
@@ -67,7 +61,11 @@ public sealed class JiraTicketService(
         string accessToken,
         CancellationToken cancellationToken = default)
     {
-        var createMeta = await GetCreateMetaAsync(cloudId, accessToken, preferredProjectKey: null, cancellationToken);
+        var createMeta = await jiraCloudApiClient.GetCreateMetaAsync(
+            cloudId,
+            accessToken,
+            preferredProjectKey: null,
+            cancellationToken);
 
         return createMeta.Projects
             .Where(project => !string.IsNullOrWhiteSpace(project.Key))
@@ -96,102 +94,30 @@ public sealed class JiraTicketService(
         string description,
         CancellationToken cancellationToken = default)
     {
-        var client = httpClientFactory.CreateClient("Atlassian");
-        var url = $"https://api.atlassian.com/ex/jira/{cloudId}/rest/api/3/issue";
+        var payload = new JiraCloudApiClient.CreateIssueRequest(
+            new JiraCloudApiClient.CreateIssueFields(
+                new JiraCloudApiClient.CreateIssueProject(projectKey),
+                title,
+                new JiraCloudApiClient.CreateIssueDescription(
+                    "doc",
+                    1,
+                    [
+                        new JiraCloudApiClient.CreateIssueDescriptionBlock(
+                            "paragraph",
+                            [new JiraCloudApiClient.CreateIssueDescriptionText("text", description)])
+                    ]),
+                new JiraCloudApiClient.CreateIssueType(issueTypeName)));
 
-        var payload = new
-        {
-            fields = new
-            {
-                project = new { key = projectKey },
-                summary = title,
-                description = new
-                {
-                    type = "doc",
-                    version = 1,
-                    content = new[]
-                    {
-                        new
-                        {
-                            type = "paragraph",
-                            content = new[]
-                            {
-                                new { type = "text", text = description }
-                            }
-                        }
-                    }
-                },
-                issuetype = new { name = issueTypeName }
-            }
-        };
-
-        using var request = new HttpRequestMessage(HttpMethod.Post, url);
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
-        request.Content = new StringContent(
-            JsonSerializer.Serialize(payload, JsonOptions),
-            Encoding.UTF8,
-            "application/json");
-
-        using var response = await client.SendAsync(request, cancellationToken);
-        var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
-
-        EnsureSuccessOrThrowPermission(response, $"Jira issue creation failed: {response.StatusCode} {responseBody}");
-
-        var created = JsonSerializer.Deserialize<CreatedJiraIssueDto>(responseBody, JsonOptions);
-        if (created is null || string.IsNullOrWhiteSpace(created.Id) || string.IsNullOrWhiteSpace(created.Key))
-        {
-            throw new InvalidOperationException("Jira issue creation returned an invalid response.");
-        }
+        var created = await jiraCloudApiClient.CreateIssueAsync(
+            cloudId,
+            accessToken,
+            payload,
+            cancellationToken);
 
         return new CreatedJiraIssue(created.Id, created.Key);
     }
 
-    private async Task<CreateMetaResponse> GetCreateMetaAsync(
-        string cloudId,
-        string accessToken,
-        string? preferredProjectKey,
-        CancellationToken cancellationToken)
-    {
-        var client = httpClientFactory.CreateClient("Atlassian");
-        var query = preferredProjectKey is null
-            ? "expand=projects.issuetypes"
-            : $"projectKeys={Uri.EscapeDataString(preferredProjectKey)}&expand=projects.issuetypes";
-
-        var url = $"https://api.atlassian.com/ex/jira/{cloudId}/rest/api/3/issue/createmeta?{query}";
-
-        using var request = new HttpRequestMessage(HttpMethod.Get, url);
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
-
-        using var response = await client.SendAsync(request, cancellationToken);
-        var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
-
-        EnsureSuccessOrThrowPermission(
-            response,
-            $"Failed to load Jira project metadata: {response.StatusCode} {responseBody}");
-
-        var createMeta = JsonSerializer.Deserialize<CreateMetaResponse>(responseBody, JsonOptions);
-        if (createMeta is null)
-        {
-            throw new InvalidOperationException("Jira project metadata returned an invalid response.");
-        }
-
-        return createMeta;
-    }
-
-    private static void EnsureSuccessOrThrowPermission(HttpResponseMessage response, string failureMessage)
-    {
-        if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
-        {
-            throw new AtlassianPermissionException();
-        }
-
-        if (!response.IsSuccessStatusCode)
-        {
-            throw new InvalidOperationException(failureMessage);
-        }
-    }
-
-    private static string? SelectIssueTypeName(IReadOnlyList<CreateMetaIssueType> issueTypes)
+    private static string? SelectIssueTypeName(IReadOnlyList<JiraCloudApiClient.CreateMetaIssueType> issueTypes)
     {
         if (issueTypes.Count == 0)
         {
@@ -210,24 +136,5 @@ public sealed class JiraTicketService(
         }
 
         return issueTypes.FirstOrDefault(type => !string.IsNullOrWhiteSpace(type.Name))?.Name;
-    }
-
-    private sealed record CreatedJiraIssueDto(string Id, string Key);
-
-    private sealed record CreateMetaResponse
-    {
-        public List<CreateMetaProject> Projects { get; init; } = [];
-    }
-
-    private sealed record CreateMetaProject
-    {
-        public string Key { get; init; } = string.Empty;
-        public string Name { get; init; } = string.Empty;
-        public List<CreateMetaIssueType> Issuetypes { get; init; } = [];
-    }
-
-    private sealed record CreateMetaIssueType
-    {
-        public string Name { get; init; } = string.Empty;
     }
 }

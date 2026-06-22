@@ -1,5 +1,4 @@
 using JiraIntegration.Server.Data;
-using JiraIntegration.Server.Interfaces;
 using Microsoft.EntityFrameworkCore;
 
 namespace JiraIntegration.Server;
@@ -15,12 +14,6 @@ public sealed class DatabaseInitializer(IServiceScopeFactory scopeFactory, ILogg
 
         var seeder = scope.ServiceProvider.GetRequiredService<DbSeeder>();
         await seeder.SeedAsync(cancellationToken);
-
-        var revokedTokenRepository = scope.ServiceProvider.GetRequiredService<IRevokedTokenRepository>();
-        await revokedTokenRepository.DeleteExpiredAsync(cancellationToken);
-
-        var refreshTokenRepository = scope.ServiceProvider.GetRequiredService<IRefreshTokenRepository>();
-        await refreshTokenRepository.DeleteExpiredAsync(cancellationToken);
 
         logger.LogInformation("Database initialized.");
     }

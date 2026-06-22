@@ -9,10 +9,9 @@ public sealed class UserConfiguration : IEntityTypeConfiguration<User>
     public void Configure(EntityTypeBuilder<User> builder)
     {
         builder.ToTable("Users");
-        builder.HasKey(u => u.Id);
-        builder.Property(u => u.Username).HasMaxLength(128).IsRequired();
-        builder.Property(u => u.PasswordHash).HasMaxLength(512).IsRequired();
-        builder.Property(u => u.Salt).HasMaxLength(128).IsRequired();
-        builder.HasIndex(u => u.Username).IsUnique();
+        builder.Property(u => u.UserName).HasMaxLength(128).IsRequired();
+        builder.Property(u => u.LegacySalt).HasMaxLength(128);
+        builder.Property(u => u.LegacyPasswordHash).HasMaxLength(512);
+        builder.HasIndex(u => u.NormalizedUserName).IsUnique();
     }
 }

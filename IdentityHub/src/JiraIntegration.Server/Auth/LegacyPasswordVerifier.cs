@@ -1,10 +1,9 @@
 using System.Security.Cryptography;
 using System.Text;
-using JiraIntegration.Server.Interfaces;
 
-namespace JiraIntegration.Server.Implementations;
+namespace JiraIntegration.Server.Auth;
 
-public sealed class PasswordHasher : IPasswordHasher
+public static class LegacyPasswordVerifier
 {
     private const int SaltSize = 16;
     private const int KeySize = 32;
@@ -19,14 +18,10 @@ public sealed class PasswordHasher : IPasswordHasher
             HashAlgorithmName.SHA256,
             KeySize));
 
-    public (string Hash, string Salt) HashPassword(string password)
-    {
-        var saltBytes = RandomNumberGenerator.GetBytes(SaltSize);
-        var hashBytes = DeriveKey(password, saltBytes);
-        return (Convert.ToBase64String(hashBytes), Convert.ToBase64String(saltBytes));
-    }
+    public static bool HasLegacyCredentials(string? legacySalt, string? legacyPasswordHash) =>
+        !string.IsNullOrWhiteSpace(legacySalt) && !string.IsNullOrWhiteSpace(legacyPasswordHash);
 
-    public bool VerifyPassword(string password, string hash, string salt)
+    public static bool Verify(string password, string hash, string salt)
     {
         var saltBytes = Convert.FromBase64String(salt);
         var expectedHash = Convert.FromBase64String(hash);
@@ -34,14 +29,8 @@ public sealed class PasswordHasher : IPasswordHasher
         return CryptographicOperations.FixedTimeEquals(expectedHash, actualHash);
     }
 
-    public string HashApiKey(string apiKey)
-    {
-        var hashBytes = SHA256.HashData(Encoding.UTF8.GetBytes(apiKey));
-        return Convert.ToHexString(hashBytes);
-    }
-
-    public void RunConstantTimeVerification(string password) =>
-        VerifyPassword(password, DummyHash, DummySalt);
+    public static void RunConstantTimeVerification(string password) =>
+        Verify(password, DummyHash, DummySalt);
 
     private static byte[] DeriveKey(string password, byte[] salt) =>
         Rfc2898DeriveBytes.Pbkdf2(

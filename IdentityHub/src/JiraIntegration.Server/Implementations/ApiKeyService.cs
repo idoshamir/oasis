@@ -5,7 +5,7 @@ namespace JiraIntegration.Server.Implementations;
 
 public sealed class ApiKeyService(
     IApiKeyRepository apiKeyRepository,
-    IPasswordHasher passwordHasher) : IApiKeyService
+    IApiKeyHasher apiKeyHasher) : IApiKeyService
 {
     private const string KeyPrefix = "ih-";
     private const int KeyPrefixDisplayLength = 8;
@@ -32,7 +32,7 @@ public sealed class ApiKeyService(
         CancellationToken cancellationToken = default)
     {
         var plaintextKey = GenerateApiKey();
-        var keyHash = passwordHasher.HashApiKey(plaintextKey);
+        var keyHash = apiKeyHasher.HashApiKey(plaintextKey);
         var keyPrefix = plaintextKey.Length >= KeyPrefixDisplayLength
             ? plaintextKey[..KeyPrefixDisplayLength]
             : plaintextKey;

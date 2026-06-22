@@ -1,5 +1,7 @@
 using System.Security.Cryptography;
+using JiraIntegration.Server.Data.Entities;
 using JiraIntegration.Server.Interfaces;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
@@ -8,7 +10,8 @@ namespace JiraIntegration.Server.Data;
 public sealed class DbSeeder(
     IUserRepository userRepository,
     IApiKeyRepository apiKeyRepository,
-    IPasswordHasher passwordHasher,
+    UserManager<User> userManager,
+    IApiKeyHasher apiKeyHasher,
     IHostEnvironment hostEnvironment,
     ILogger<DbSeeder> logger)
 {
@@ -43,11 +46,22 @@ public sealed class DbSeeder(
         var apiKeyName = Environment.GetEnvironmentVariable(ApiKeyNameEnvVar)
             ?? DefaultApiKeyName;
 
-        var (hash, salt) = passwordHasher.HashPassword(password);
-        var user = await userRepository.CreateAsync(username, hash, salt, cancellationToken);
+        var user = new User
+        {
+            Id = Guid.NewGuid(),
+            UserName = username,
+            NormalizedUserName = userManager.NormalizeName(username)
+        };
+
+        var createResult = await userManager.CreateAsync(user, password);
+        if (!createResult.Succeeded)
+        {
+            logger.LogWarning("Failed to seed user '{Username}'.", username);
+            return;
+        }
 
         var plaintextApiKey = GenerateApiKey();
-        var keyHash = passwordHasher.HashApiKey(plaintextApiKey);
+        var keyHash = apiKeyHasher.HashApiKey(plaintextApiKey);
         var keyPrefix = plaintextApiKey[..8];
         await apiKeyRepository.CreateAsync(
             user.Id,

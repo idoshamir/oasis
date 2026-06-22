@@ -107,8 +107,8 @@ try {
 
     Write-Host ''
     Write-Host 'Demo database ready.'
-    Write-Host '  Username: demo'
-    Write-Host '  Password: Demo123!'
+    Write-Host '  demo / Demo123!'
+    Write-Host '  testuser / Test123!'
 }
 finally {
     Pop-Location

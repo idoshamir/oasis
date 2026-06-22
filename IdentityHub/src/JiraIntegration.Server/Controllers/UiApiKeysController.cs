@@ -1,14 +1,14 @@
 using JiraIntegration.Server.Interfaces;
 using JiraIntegration.Server.Models.ApiKeys;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using OpenIddict.Validation.AspNetCore;
 
 namespace JiraIntegration.Server.Controllers;
 
 [ApiController]
 [Route("api/ui/api-keys")]
-[Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
+[Authorize(AuthenticationSchemes = OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme)]
 public sealed class UiApiKeysController(
     ICurrentUserAccessor currentUserAccessor,
     IApiKeyService apiKeyService) : ControllerBase

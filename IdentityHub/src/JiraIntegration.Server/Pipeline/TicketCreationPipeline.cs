@@ -90,14 +90,28 @@ public sealed class TicketCreationPipeline(
             await jiraConnectionRepository.SaveAsync(connection, cancellationToken);
         }
 
-        var created = await jiraTicketService.CreateTaskAsync(
-            connection.AtlassianCloudId,
-            accessToken,
-            projectTarget.ProjectKey,
-            projectTarget.IssueTypeName,
-            title.Trim(),
-            description ?? string.Empty,
-            cancellationToken);
+        CreatedJiraIssue created;
+        try
+        {
+            created = await jiraTicketService.CreateTaskAsync(
+                connection.AtlassianCloudId,
+                accessToken,
+                projectTarget.ProjectKey,
+                projectTarget.IssueTypeName,
+                title.Trim(),
+                description ?? string.Empty,
+                cancellationToken);
+        }
+        catch (InvalidOperationException ex)
+        {
+            logger.LogWarning(
+                ex,
+                "Jira issue creation failed for user {UserId} in project {ProjectKey} with issue type {IssueTypeName}",
+                userId,
+                projectTarget.ProjectKey,
+                projectTarget.IssueTypeName);
+            throw;
+        }
 
         var ledgerEntry = new NhiTicketLedger
         {

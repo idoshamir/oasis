@@ -1,11 +1,11 @@
+using Microsoft.AspNetCore.Identity;
+
 namespace JiraIntegration.Server.Data.Entities;
 
-public sealed class User
+public sealed class User : IdentityUser<Guid>
 {
-    public Guid Id { get; set; }
-    public string Username { get; set; } = string.Empty;
-    public string PasswordHash { get; set; } = string.Empty;
-    public string Salt { get; set; } = string.Empty;
+    public string? LegacySalt { get; set; }
+    public string? LegacyPasswordHash { get; set; }
 
     public JiraConnection? JiraConnection { get; set; }
     public ICollection<ApiKey> ApiKeys { get; set; } = [];

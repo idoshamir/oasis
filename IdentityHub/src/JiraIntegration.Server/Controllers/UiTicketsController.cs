@@ -3,15 +3,15 @@ using JiraIntegration.Server.Models.Common;
 using JiraIntegration.Server.Models.Exceptions;
 using JiraIntegration.Server.Models.Jira;
 using JiraIntegration.Server.Models.Tickets;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using OpenIddict.Validation.AspNetCore;
 
 namespace JiraIntegration.Server.Controllers;
 
 [ApiController]
 [Route("api/ui/tickets")]
-[Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
+[Authorize(AuthenticationSchemes = OpenIddictValidationAspNetCoreDefaults.AuthenticationScheme)]
 public sealed class UiTicketsController(
     ICurrentUserAccessor currentUserAccessor,
     ITicketCreationPipeline ticketCreationPipeline) : ControllerBase
