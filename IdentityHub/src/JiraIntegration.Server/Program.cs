@@ -112,9 +112,12 @@ builder.Services.AddOpenIddict()
             .AddDevelopmentEncryptionCertificate();
         options.AddEncryptionKey(encryptionKey);
         options.DisableAccessTokenEncryption();
-        options.UseAspNetCore()
-            .EnableTokenEndpointPassthrough()
-            .DisableTransportSecurityRequirement();
+        var aspNetCore = options.UseAspNetCore()
+            .EnableTokenEndpointPassthrough();
+        if (builder.Environment.IsDevelopment())
+        {
+            aspNetCore.DisableTransportSecurityRequirement();
+        }
     })
     .AddValidation(options =>
     {
